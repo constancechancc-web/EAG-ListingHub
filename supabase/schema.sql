@@ -76,6 +76,12 @@ alter table public.meta      enable row level security;
 -- nobody who is not signed in gets anything
 revoke all on public.app_users, public.listings, public.requests, public.seen, public.meta from anon;
 grant select, insert, update, delete on public.app_users, public.listings, public.requests, public.seen, public.meta to authenticated;
+-- the scheduled import (server only) uses the service_role key, which bypasses RLS but still needs table privileges
+do $$ begin
+  if exists (select 1 from pg_roles where rolname = 'service_role') then
+    grant select, insert, update, delete on public.app_users, public.listings, public.requests, public.seen, public.meta to service_role;
+  end if;
+end $$;
 
 drop policy if exists "listings read"   on public.listings;
 drop policy if exists "listings add"    on public.listings;
