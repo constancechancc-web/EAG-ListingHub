@@ -5,8 +5,8 @@
 // NEVER put the service_role / secret key here.
 // Leave SUPABASE_URL empty to run "Local test mode" on localhost (data stays in this browser).
 // ─────────────────────────────────────────────────────────────────────────────
-export const SUPABASE_URL = '';
-export const SUPABASE_ANON_KEY = '';
+export const SUPABASE_URL = 'https://nmdsxbexodgljmuhewbo.supabase.co';
+export const SUPABASE_ANON_KEY = 'sb_publishable_vsZRLs5HfSLP8qzTxHxH1A_37fp4l41'; // public "publishable" key
 
 // The one and only Admin. Must match the OWNER email in supabase/schema.sql.
 export const OWNER_EMAIL = 'constancechan.cc@gmail.com';

@@ -91,7 +91,8 @@ const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = se
 
 // ───────────────────────── boot / auth ─────────────────────────
 async function boot() {
-  const local = !SUPABASE_URL || !SUPABASE_ANON_KEY;
+  // Local test mode: no Supabase settings, or localhost with ?local=1 (keeps test data off the live database)
+  const local = !SUPABASE_URL || !SUPABASE_ANON_KEY || (isLocalHost && new URLSearchParams(location.search).has('local'));
   if (local && !isLocalHost) {
     app().innerHTML = `<section class="panel center"><h2>Not configured 尚未设定</h2><p class="muted">Supabase settings are missing. 请先按说明填写 supabase-config.js。</p></section>`;
     return;
