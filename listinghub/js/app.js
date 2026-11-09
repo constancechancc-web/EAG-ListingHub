@@ -142,6 +142,7 @@ function renderLogin() {
         </div>` : `
         <p class="muted">Only invited team members can enter. 只有受邀的团队成员可以进入。</p>
         <button class="btn gold" data-act="google-login" style="width:100%">Sign in with Google 使用 Google 登录</button>`}
+      <p class="small" style="margin:12px 0 0"><a href="privacy.html">Privacy Policy 隐私政策</a></p>
     </section>`;
   bindGlobal();
 }
