@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+  <meta name="googlebot" content="noindex, nofollow">
+  <meta name="theme-color" content="#f7f3ea">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="EAG Hub">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>EAG Listing Hub</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="assets/icon-192.png">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="hero" id="hero">
+    <!-- The cover photo already shows the EAG logo, the title and the slogan. -->
+    <img class="cover" src="assets/hero-bg.jpg" srcset="assets/hero-bg-small.jpg 900w, assets/hero-bg.jpg 1600w" sizes="100vw"
+         width="1600" height="535" alt="EAG Listing Hub — 一站式房源管理和智能配对平台" fetchpriority="high">
+    <h1 class="sr-only">EAG Listing Hub</h1>
+    <p class="sr-only">一站式房源管理和智能配对平台</p>
+  </header>
+
+  <main class="wrap" id="app">
+    <section class="panel center" id="boot"><div class="spinner"></div><p>Loading 加载中…</p></section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="js/app.js"></script>
+  <noscript>Please enable JavaScript 请开启 JavaScript</noscript>
+</body>
+</html>

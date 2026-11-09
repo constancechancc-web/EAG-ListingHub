@@ -1,0 +1,7 @@
+node_modules/
+public/
+.vercel/
+.env*
+*service-account*.json
+*serviceaccount*.json
+.claude/

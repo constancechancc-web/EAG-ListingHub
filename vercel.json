@@ -1,0 +1,25 @@
+{
+  "buildCommand": "node scripts/build.js",
+  "outputDirectory": "public",
+  "redirects": [
+    { "source": "/", "destination": "/listinghub/", "permanent": false }
+  ],
+  "crons": [
+    { "path": "/api/listinghub/cron-import", "schedule": "0 4 * * *" },
+    { "path": "/api/listinghub/cron-import", "schedule": "0 13 * * *" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "same-origin" }
+      ]
+    },
+    {
+      "source": "/listinghub/sw.js",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "name": "eag-listing-hub",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "EAG Listing Hub — WhatsApp listing search and WTB/WTR matching",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "serve": "node scripts/serve.js",
+    "build": "node scripts/build.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0",
+    "@supabase/supabase-js": "^2.118.0",
+    "fflate": "^0.8.2",
+    "google-auth-library": "^9.15.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.16"
+  }
+}
