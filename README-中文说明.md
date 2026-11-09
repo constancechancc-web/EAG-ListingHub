@@ -51,8 +51,8 @@
    - **Google** → 开启，贴上 Client ID 和 Client secret → Save。
    - **Email** → **关闭**（本系统只用 Google 登录）。
 5. Supabase → **Authentication → URL Configuration**：
-   - **Site URL**：`https://你的网址.vercel.app/listinghub/`
-   - **Redirect URLs** 加入：`https://你的网址.vercel.app/listinghub/`、`https://*-你的vercel账号.vercel.app/listinghub/`（测试网址）、`http://localhost:5173/listinghub/`
+   - **Site URL**：`https://eag-listinghub.vercel.app/listinghub/`
+   - **Redirect URLs** 加入：`https://eag-listinghub.vercel.app/listinghub/`、`https://*-constancechancc-9708s-projects.vercel.app/listinghub/`（测试网址）、`http://localhost:5173/listinghub/`
 
 ### 3. 定时导入用的 Google Drive（可以稍后再做）
 1. 在同一个 Google Cloud 项目：**APIs & Services → Library** → 搜 **Google Drive API** → Enable。
@@ -80,10 +80,10 @@ GitHub 仓库：https://github.com/constancechancc-web/EAG-ListingHub
 | `ANTHROPIC_API_KEY` | （可选）想用 AI 帮忙判断看不懂的讯息才需要 |
 | `AI_IN_CRON` | （可选）填 `1` = 定时导入时也用 AI |
 
-4. 加完之后 **Deployments → 最新一个 → Redeploy**。网址是 `https://你的项目.vercel.app/listinghub/`。
+4. 加完之后 **Deployments → 最新一个 → Redeploy**。网址是 `https://eag-listinghub.vercel.app/listinghub/`。
 
 > **定时导入 12:00 和 21:00**：Vercel 免费版（Hobby）每天只能跑一次定时任务；一天两次需要 Pro 版。
-> 免费替代：用 cron-job.org 在 12:00 / 21:00（Asia/Kuala_Lumpur）呼叫 `https://你的网址/api/listinghub/cron-import`，Header 加上 `Authorization: Bearer 你的CRON_SECRET`。
+> 免费替代：用 cron-job.org 在 12:00 / 21:00（Asia/Kuala_Lumpur）呼叫 `https://eag-listinghub.vercel.app/api/listinghub/cron-import`，Header 加上 `Authorization: Bearer 你的CRON_SECRET`。
 
 > ⚠️ **测试规则：** 你测试满意之前，**不要**邀请其他经纪。之后改代码时，先推到另一个分支（例如 `test`），Vercel 会给一个 Preview 测试网址，确认没问题才合并到 `main`。
 
