@@ -126,3 +126,31 @@ GitHub 仓库：https://github.com/constancechancc-web/EAG-ListingHub
 - 网页只用 anon key；service_role key 只在 Vercel 服务器（`api/listinghub/`）。
 - Vercel 只发布 `listinghub/`（`scripts/build.js` → `public/`），测试、说明文件和示范聊天不会公开。
 - AI 只在导入时用于规则判断不了的讯息，只发送讯息文字（电话号码已遮盖），模型 `claude-opus-5-5`；搜索和配对永远不用 AI。
+
+---
+
+## 六、自动导入（电脑上的 iCloud 文件夹 → 每天 12:00 和 21:00）
+
+文件夹：`C:\Users\fenfe\iCloudDrive\WA Chat Export`
+
+**怎么运作：** 你的电脑每天 12:00 和 21:00 自动运行 `scripts/auto-import.js`：只读取**新的或改过的**导出文件，解析后把**新的**房源和需求传到网站。同一位经纪重复贴的内容只保留最新一条。结果会显示在 **导入房源 Import** 页的「定时导入」。
+
+**你要做的：**
+1. 先把最新的 WhatsApp 导出（不含媒体）存进这个文件夹，**文件名保持一样**（会覆盖旧文件）。
+2. 在 iCloud 文件夹上点右键 → **始终保留在此设备上**，这样文件已经下载好，不用等。
+3. 电脑要开着（睡眠也可以：醒来后会自动补跑）。
+
+**第一次设定（Vercel，只做一次）：** Vercel → 项目 → Settings → Environment Variables，加入 3 个：
+| 名称 | 填什么 |
+|---|---|
+| `INGEST_TOKEN` | 打开 `scripts/auto-import.config.json`，复制里面的 `token`（秘密，不要给别人） |
+| `SUPABASE_URL` | `https://nmdsxbexodgljmuhewbo.supabase.co` |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API Keys → **Secret key**（秘密） |
+加完后在 Deployments 点 **Redeploy**。
+
+**手动试跑 / 查看：**
+- 立刻运行一次：`node scripts/auto-import.js`
+- 只检查不上传：`node scripts/auto-import.js --dry-run`
+- 记录文件：`scripts/auto-import.log`
+- 暂停定时任务：`powershell -ExecutionPolicy Bypass -File scripts\install-auto-import.ps1 -Remove`
+- 重新开启：`powershell -ExecutionPolicy Bypass -File scripts\install-auto-import.ps1`
