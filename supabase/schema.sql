@@ -21,7 +21,8 @@ create table if not exists public.listings (
   day        text not null,               -- YYYY-MM-DD (Malaysia time) the message was posted
   posted_at  timestamptz,
   data       jsonb not null,              -- full parsed listing incl. original message
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()   -- last time the row was added or changed (browsers sync from this)
 );
 create index if not exists listings_day_idx on public.listings (day);
 
@@ -31,9 +32,16 @@ create table if not exists public.requests (
   posted_at  timestamptz,
   status     text not null default 'open' check (status in ('open', 'closed')),
   data       jsonb not null,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 create index if not exists requests_day_idx on public.requests (day);
+
+-- databases created before updated_at existed
+alter table public.listings add column if not exists updated_at timestamptz not null default now();
+alter table public.requests add column if not exists updated_at timestamptz not null default now();
+create index if not exists listings_updated_idx on public.listings (updated_at, id);
+create index if not exists requests_updated_idx on public.requests (updated_at, id);
 
 -- every message hash ever imported, so importing the same chat twice adds nothing
 create table if not exists public.seen (
@@ -147,7 +155,7 @@ begin
       insert into public.listings as t (id, day, posted_at, data)
       select id, day, posted_at, data from incoming
       on conflict (id) do update
-        set day = excluded.day, posted_at = excluded.posted_at, data = excluded.data
+        set day = excluded.day, posted_at = excluded.posted_at, data = excluded.data, updated_at = now()
         where excluded.posted_at > coalesce(t.posted_at, '-infinity'::timestamptz)
       returning (xmax = 0) as inserted
     )
@@ -162,7 +170,7 @@ begin
       insert into public.requests as t (id, day, posted_at, data)
       select id, day, posted_at, data from incoming
       on conflict (id) do update
-        set day = excluded.day, posted_at = excluded.posted_at, data = excluded.data   -- status (open/closed) is kept
+        set day = excluded.day, posted_at = excluded.posted_at, data = excluded.data, updated_at = now()   -- status (open/closed) is kept
         where excluded.posted_at > coalesce(t.posted_at, '-infinity'::timestamptz)
       returning (xmax = 0) as inserted
     )
@@ -193,3 +201,4 @@ end $$;
 -- A longer limit is a safety net for the big first load.
 alter role authenticated set statement_timeout = '30s';
 notify pgrst, 'reload config';
+notify pgrst, 'reload schema';

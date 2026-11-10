@@ -136,3 +136,18 @@ test('migration 2026-11-10 runs on an existing database and keeps every rule wor
   const pol = (await rows(OWNER, `select qual from pg_policies where tablename = 'listings' and policyname = 'listings read'`))[0].qual;
   assert.match(pol, /SELECT app_role\(\)/i);
 });
+
+test('migration 2026-11-10b: updated_at moves forward when a row is added or a re-post replaces it', async () => {
+  await db.exec(fs.readFileSync(new URL('../supabase/migrations/2026-11-10b-updated-at.sql', import.meta.url), 'utf8'));
+  const row = (id, at) => ({ id, day: at.slice(0, 10), posted_at: at, data: { id } });
+  const call = (rowsArr) => rows('editor@gmail.com', `select import_items('listings', '${JSON.stringify(rowsArr)}'::jsonb) as r`);
+  await call([row('U1', '2026-11-01T10:00:00+08:00')]);
+  const t1 = (await rows(OWNER, `select updated_at from listings where id = 'U1'`))[0].updated_at;
+  await db.exec('select pg_sleep(0.05)');
+  await call([row('U1', '2026-11-08T10:00:00+08:00')]); // newer re-post
+  const t2 = (await rows(OWNER, `select updated_at from listings where id = 'U1'`))[0].updated_at;
+  assert.ok(new Date(t2) > new Date(t1), 'updated_at advanced');
+  await db.exec('select pg_sleep(0.05)');
+  await call([row('U1', '2026-11-02T10:00:00+08:00')]); // older re-post → ignored, updated_at unchanged
+  assert.equal(String((await rows(OWNER, `select updated_at from listings where id = 'U1'`))[0].updated_at), String(t2));
+});
