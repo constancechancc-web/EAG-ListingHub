@@ -10,10 +10,10 @@ const PAGE = 1000; // Supabase returns at most 1000 rows per request
 // ───────────── local copy of the list (IndexedDB) ─────────────
 // Opening the app downloads ~26,000 listings (several MB). Each browser therefore keeps its own copy and, next time,
 // only asks the database for rows that changed ("updated_at" newer than the last one it has).
-// A full reload happens at least every 12 h (this also removes rows an admin deleted) and after any admin delete.
+// A full reload happens at least every 3 days (this also removes rows an admin deleted) and after any admin delete.
 const CACHE_DB = 'eag-hub-cache';
 const CACHE_VERSION = 1;
-const CACHE_MAX_AGE = 12 * 3600 * 1000;
+const CACHE_MAX_AGE = 3 * 24 * 3600 * 1000;
 
 function openCache() {
   return new Promise((resolve) => {
@@ -48,6 +48,7 @@ export function createSupabaseStore() {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' },
   });
   let session = null;
+  const seenMemo = new Map(); // day → Set of message hashes already imported
 
   const check = ({ data, error }) => { if (error) throw new Error(error.message); return data; };
 
@@ -190,12 +191,16 @@ export function createSupabaseStore() {
       return out;
     },
 
+    /** Hashes of messages already imported on these days. Each day is fetched once per page session (many files in a row). */
     async seenFor(days) {
-      const set = new Set();
-      for (let i = 0; i < days.length; i += 50) {
-        const chunk = days.slice(i, i + 50);
-        for (const r of await selectAll('seen', 'day', (q) => q.in('day', chunk))) set.add(r.hash);
+      const need = days.filter((d) => !seenMemo.has(d));
+      for (let i = 0; i < need.length; i += 50) {
+        const chunk = need.slice(i, i + 50);
+        chunk.forEach((d) => seenMemo.set(d, new Set()));
+        for (const r of await selectAll('seen', 'day', (q) => q.in('day', chunk))) seenMemo.get(r.day).add(r.hash);
       }
+      const set = new Set();
+      for (const d of days) for (const h of seenMemo.get(d) || []) set.add(h);
       return set;
     },
 
@@ -203,6 +208,7 @@ export function createSupabaseStore() {
       const L = await importItems('listings', listings, 'L');
       const R = await importItems('requests', requests, 'R');
       if (newHashes.length) await insertNew('seen', newHashes.map(({ hash, day }) => ({ hash, day })), 'hash', false);
+      for (const { hash, day } of newHashes) if (seenMemo.has(day)) seenMemo.get(day).add(hash);
       return { listings: L.added, requests: R.added, bumpedListings: L.bumped, bumpedRequests: R.bumped };
     },
 
