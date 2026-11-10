@@ -1,4 +1,4 @@
-// Scheduled import (runs on the owner's computer, see scripts/install-auto-import.ps1).
+// Scheduled import 12:00 / 16:00 / 21:00 (runs on the owner's computer, see scripts/install-auto-import.ps1).
 // Reads WhatsApp exports (.zip / .txt) from a folder, parses them with the same code as the app, and sends only
 // NEW items to the website (/api/listinghub/ingest). Files that did not change since the last run are skipped.
 //

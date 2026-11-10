@@ -781,7 +781,7 @@ async function viewImport(v) {
       <div id="impStatus"></div>
     </section>
     <section class="panel">
-      <h2>Scheduled import 定时导入 (12:00 & 21:00)</h2>
+      <h2>Scheduled import 定时导入 (12:00, 4:00 pm & 9:00 pm)</h2>
       <div id="impLog"><div class="spinner"></div></div>
     </section>`;
   try {
