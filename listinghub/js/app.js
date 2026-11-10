@@ -786,9 +786,9 @@ async function viewImport(v) {
     </section>`;
   try {
     const log = await S.store.getMeta('importLog');
-    $('#impLog').innerHTML = renderImportLog(log);
+    const box = $('#impLog'); if (box) box.innerHTML = renderImportLog(log);
   } catch (e) {
-    $('#impLog').innerHTML = `<p class="muted small">${esc(e.message)}</p>`;
+    const box = $('#impLog'); if (box) box.innerHTML = `<p class="muted small">${esc(e.message)}</p>`;
   }
 }
 
