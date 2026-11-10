@@ -254,10 +254,13 @@ table.simple td, table.simple th { border-bottom: 1px solid var(--line); padding
 .bv-above { color: #9a5b00; font-weight: 700; }
 
 /* ---------- name + WhatsApp language bar ---------- */
-.prefs { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 10px 16px; margin: 4px 0 10px; }
-.prefs-name { flex: 0 1 280px; min-width: 200px; }
-.prefs-lang { display: flex; align-items: center; gap: 10px; }
-.prefs-lang-label { font-size: 12px; line-height: 1.3; color: var(--muted); text-align: right; }
+/* one row: [Your name][ name box stretches ][WhatsApp message language][EN|华语] */
+.prefs { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin: 4px 0 10px; }
+.prefs-name { flex: 1 1 320px; min-width: 0; display: flex; align-items: center; gap: 10px; }
+.prefs-name input { flex: 1; min-width: 0; }
+.prefs-label, .prefs-lang-label { font-size: 12px; line-height: 1.3; color: var(--muted); white-space: nowrap; }
+.prefs-lang { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.prefs-lang-label { text-align: right; }
 @media (max-width: 480px) {
   .stats-grid { gap: 8px; }
   .stat-tile { padding: 10px; gap: 8px; }

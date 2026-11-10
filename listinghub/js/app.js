@@ -266,7 +266,7 @@ function prefsBar() {
   const lang = pref.get('lang', 'en');
   return `
     <div class="prefs">
-      <label class="f prefs-name"><span>Your name 你的名字 (for WhatsApp)</span>
+      <label class="prefs-name"><span class="prefs-label">Your name<br>你的名字</span>
         <input type="text" data-pref="name" value="${esc(pref.get('name'))}" placeholder="e.g. Amy Tan"></label>
       <div class="prefs-lang">
         <span class="prefs-lang-label">WhatsApp message language<br>信息语言</span>
