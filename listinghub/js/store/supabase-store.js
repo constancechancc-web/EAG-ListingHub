@@ -7,6 +7,42 @@ import { toStored } from '../core/importer.js';
 const TABLE = { L: 'listings', R: 'requests' };
 const PAGE = 1000; // Supabase returns at most 1000 rows per request
 
+// ───────────── local copy of the list (IndexedDB) ─────────────
+// Opening the app downloads ~26,000 listings (several MB). Each browser therefore keeps its own copy and, next time,
+// only asks the database for rows that changed ("updated_at" newer than the last one it has).
+// A full reload happens at least every 12 h (this also removes rows an admin deleted) and after any admin delete.
+const CACHE_DB = 'eag-hub-cache';
+const CACHE_VERSION = 1;
+const CACHE_MAX_AGE = 12 * 3600 * 1000;
+
+function openCache() {
+  return new Promise((resolve) => {
+    try {
+      const r = indexedDB.open(CACHE_DB, 1);
+      r.onupgradeneeded = () => { const d = r.result; d.createObjectStore('listings', { keyPath: 'id' }); d.createObjectStore('requests', { keyPath: 'id' }); d.createObjectStore('meta', { keyPath: 'k' }); };
+      r.onsuccess = () => resolve(r.result);
+      r.onerror = () => resolve(null);
+      r.onblocked = () => resolve(null);
+    } catch { resolve(null); }
+  });
+}
+const idbDone = (tx) => new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error); });
+const idbReq = (r) => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+async function cacheGet(db, store, key) { return idbReq(db.transaction(store).objectStore(store).get(key)); }
+async function cacheAll(db, store) { return idbReq(db.transaction(store).objectStore(store).getAll()); }
+async function cachePut(db, store, rows) {
+  for (let i = 0; i < rows.length; i += 2000) {
+    const tx = db.transaction(store, 'readwrite');
+    for (const r of rows.slice(i, i + 2000)) tx.objectStore(store).put(r);
+    await idbDone(tx);
+  }
+}
+async function cacheClear(db, stores) { const tx = db.transaction(stores, 'readwrite'); stores.forEach((s) => tx.objectStore(s).clear()); await idbDone(tx); }
+export function forgetCache() { try { indexedDB.deleteDatabase(CACHE_DB); } catch {} }
+
+/** Newest (updated_at, id) of a list of rows. */
+const newestCursor = (rows, prev) => rows.reduce((c, r) => (!c || r.updated_at > c.u || (r.updated_at === c.u && r.id > c.id) ? { u: r.updated_at, id: r.id } : c), prev || null);
+
 export function createSupabaseStore() {
   const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' },
@@ -39,6 +75,21 @@ export function createSupabaseStore() {
   }
 
   const selectAll = (table, columns, filter) => keysetRange(table, columns, filter);
+
+  /** Rows added or changed after `cursor` {u, id} (all rows when null), oldest change first. */
+  async function changesSince(table, columns, cursor) {
+    const out = [];
+    let c = cursor;
+    for (;;) {
+      let q = sb.from(table).select(`id,updated_at,${columns}`).order('updated_at').order('id').limit(PAGE);
+      if (c) q = q.or(`updated_at.gt.${c.u},and(updated_at.eq.${c.u},id.gt.${c.id})`);
+      const rows = check(await q);
+      out.push(...rows);
+      if (rows.length < PAGE) return out;
+      const last = rows[rows.length - 1];
+      c = { u: last.updated_at, id: last.id };
+    }
+  }
 
   /**
    * Big tables (listings): ids are hashes in base 36, evenly spread, so the table is cut into slices by first
@@ -106,13 +157,37 @@ export function createSupabaseStore() {
       const redirectTo = location.origin + location.pathname;
       check(await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo, queryParams: { prompt: 'select_account' } } }));
     },
-    signOut: () => sb.auth.signOut(),
+    signOut: () => { forgetCache(); return sb.auth.signOut(); },
     idToken: async () => (await sb.auth.getSession()).data.session?.access_token || null,
 
+    /** The list for the screen: from this browser's saved copy plus what changed since; a full download if there is none. */
     async loadAll(fromDay) {
+      const inRange = (x) => !fromDay || (x.day || '') >= fromDay;
+      const db = await openCache();
+      let meta = null;
+      try { meta = db && (await cacheGet(db, 'meta', 'sync')); } catch {}
+      if (db && meta && meta.v === CACHE_VERSION && Date.now() - meta.fullAt < CACHE_MAX_AGE) {
+        try {
+          const [dl, dr] = await Promise.all([changesSince('listings', 'data', meta.l), changesSince('requests', 'data,status', meta.r)]);
+          await cachePut(db, 'listings', dl.map((r) => ({ id: r.id, item: fromRow(r) })));
+          await cachePut(db, 'requests', dr.map((r) => ({ id: r.id, item: fromRow(r) })));
+          await cachePut(db, 'meta', [{ ...meta, k: 'sync', l: newestCursor(dl, meta.l), r: newestCursor(dr, meta.r) }]);
+          const [cl, cr] = await Promise.all([cacheAll(db, 'listings'), cacheAll(db, 'requests')]);
+          return { listings: cl.map((x) => x.item).filter(inRange), requests: cr.map((x) => x.item).filter(inRange), fromCache: true, changed: dl.length + dr.length };
+        } catch { /* cache unusable → full download below */ }
+      }
       const f = fromDay ? (q) => q.gte('day', fromDay) : null;
-      const [l, r] = await Promise.all([selectAllSliced('listings', 'data', f), selectAll('requests', 'data,status', f)]);
-      return { listings: l.map(fromRow), requests: r.map(fromRow) };
+      const [l, r] = await Promise.all([selectAllSliced('listings', 'data,updated_at', f), selectAll('requests', 'data,status,updated_at', f)]);
+      const out = { listings: l.map(fromRow), requests: r.map(fromRow), fromCache: false, changed: l.length + r.length };
+      if (db) {
+        try {
+          await cacheClear(db, ['listings', 'requests']);
+          await cachePut(db, 'listings', l.map((x, i) => ({ id: x.id, item: out.listings[i] })));
+          await cachePut(db, 'requests', r.map((x, i) => ({ id: x.id, item: out.requests[i] })));
+          await cachePut(db, 'meta', [{ k: 'sync', v: CACHE_VERSION, fullAt: Date.now(), l: newestCursor(l), r: newestCursor(r) }]);
+        } catch { /* a full cache is only an optimisation */ }
+      }
+      return out;
     },
 
     async seenFor(days) {
@@ -133,10 +208,11 @@ export function createSupabaseStore() {
 
     async updateRequest(item, patch) {
       const data = toStored({ ...item, ...patch });
-      check(await sb.from('requests').update({ data, status: data.status === 'closed' ? 'closed' : 'open' }).eq('id', item.id));
+      check(await sb.from('requests').update({ data, status: data.status === 'closed' ? 'closed' : 'open', updated_at: new Date().toISOString() }).eq('id', item.id));
     },
     async deleteItem(prefix, item) {
       check(await sb.from(TABLE[prefix]).delete().eq('id', item.id));
+      forgetCache();
     },
 
     async exportAll() {
@@ -157,12 +233,14 @@ export function createSupabaseStore() {
     },
 
     async deleteDays(beforeDay) {
+      forgetCache();
       const l = check(await sb.from('listings').delete().lt('day', beforeDay).select('id')) || [];
       const r = check(await sb.from('requests').delete().lt('day', beforeDay).select('id')) || [];
       check(await sb.from('seen').delete().lt('day', beforeDay));
       return l.length + r.length;
     },
     async clearAll() {
+      forgetCache();
       for (const t of ['listings', 'requests']) check(await sb.from(t).delete().neq('id', ''));
       check(await sb.from('seen').delete().neq('hash', ''));
     },
