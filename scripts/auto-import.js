@@ -105,7 +105,7 @@ async function main() {
   }
   const names = fs.readdirSync(cfg.folder).filter((f) => /\.(zip|txt)$/i.test(f)).sort();
   const seen = new Set(Object.keys(state.sent));
-  const totals = { files: 0, listings: 0, requests: 0, merged: 0, failed: 0, skipped: 0 };
+  const totals = { files: 0, listings: 0, requests: 0, merged: 0, failed: 0, skipped: 0, added: 0, addedReq: 0 };
   const report = [];
   log(`${DRY ? 'DRY RUN — ' : ''}Looking at ${names.length} file(s) in ${cfg.folder}`);
 
@@ -124,13 +124,16 @@ async function main() {
       const res = processMessages(msgs, { fileName: name, seen });
       if (!DRY) {
         const pages = Math.max(Math.ceil(res.listings.length / 300), Math.ceil(res.requests.length / 300), Math.ceil(res.newHashes.length / 3000), 1);
+        let addedL = 0, addedR = 0;
         for (let p = 0; p < pages; p++) {
-          await call('POST', {
+          const out = await call('POST', {
             listings: res.listings.slice(p * 300, p * 300 + 300),
             requests: res.requests.slice(p * 300, p * 300 + 300),
             seen: res.newHashes.slice(p * 3000, p * 3000 + 3000),
           });
+          addedL += (out.listings && out.listings.added) || 0; addedR += (out.requests && out.requests.added) || 0;
         }
+        entry.added = addedL; entry.addedReq = addedR; totals.added += addedL; totals.addedReq += addedR;
         for (const h of res.newHashes) { state.sent[h.hash] = h.day; seen.add(h.hash); }
         state.files[name] = { mtimeMs: st.mtimeMs, size: st.size, at: new Date().toISOString() };
         saveState();
@@ -149,9 +152,9 @@ async function main() {
   for (const [h, d] of Object.entries(state.sent)) if (d < fromDay) delete state.sent[h];
   saveState();
 
-  log(`${DRY ? 'DRY RUN ' : ''}done: ${totals.files} file(s) read, ${totals.skipped} unchanged, ${totals.failed} failed; ${totals.listings} new listings, ${totals.requests} new requests (${totals.merged} re-posts merged)`);
+  log(`${DRY ? 'DRY RUN ' : ''}done: ${totals.files} file(s) read, ${totals.skipped} unchanged, ${totals.failed} failed; ${DRY ? `${totals.listings} listings, ${totals.requests} requests found` : `${totals.added} new listings, ${totals.addedReq} new requests added (${totals.listings} + ${totals.requests} checked)`}; ${totals.merged} re-posts merged`);
   if (!DRY && report.length) {
-    try { await call('POST', { log: { files: report, newListings: totals.listings, newRequests: totals.requests, merged: totals.merged } }); }
+    try { await call('POST', { log: { files: report, newListings: totals.added, newRequests: totals.addedReq, merged: totals.merged } }); }
     catch (e) { log(`Could not save the run summary: ${e.message}`); }
   }
   process.exit(totals.failed && !totals.files ? 1 : 0);

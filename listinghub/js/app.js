@@ -798,10 +798,10 @@ function renderImportLog(log) {
   const bad = (run.files || []).filter((f) => f.status !== 'ok' && f.status !== 'skipped');
   return `
     <p class="small">Last run 上次: <b>${esc(new Date(run.at).toLocaleString('en-MY', { timeZone: 'Asia/Kuala_Lumpur' }))}</b> —
-      ${run.newListings || 0} new listings, ${run.newRequests || 0} new WTB/WTR, ${run.duplicates || 0} duplicates.</p>
-    ${bad.length ? `<div class="note"><b class="err">Some Drive files could not be imported 部分文件导入失败:</b>
+      ${(run.newListings || 0).toLocaleString()} new listings, ${(run.newRequests || 0).toLocaleString()} new WTB/WTR, ${(run.duplicates || 0).toLocaleString()} re-posts merged.</p>
+    ${bad.length ? `<div class="note"><b class="err">Some files could not be imported 部分文件导入失败:</b>
       <table class="simple">${bad.map((f) => `<tr><td>${esc(f.name)}</td><td>${esc(f.reason || f.status)}${f.size ? ` (${(f.size / 1048576).toFixed(1)} MB)` : ''}</td></tr>`).join('')}</table>
-      <p style="margin:6px 0 0">Re-export <b>Without Media</b>, or upload it here manually.<br>请重新导出（选择<b>不含媒体</b>），或在上方手动上传。</p></div>` : `<p class="ok small">All Drive files imported OK 全部成功</p>`}`;
+      <p style="margin:6px 0 0">Re-export <b>Without Media</b>, or upload it here manually.<br>请重新导出（选择<b>不含媒体</b>），或在上方手动上传。</p></div>` : `<p class="ok small">All files imported OK 全部成功</p>`}`;
 }
 
 function setImp(html) { const el = $('#impStatus'); if (el) el.innerHTML = html; }
