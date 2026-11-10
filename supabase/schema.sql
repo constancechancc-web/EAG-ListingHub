@@ -87,26 +87,26 @@ drop policy if exists "listings read"   on public.listings;
 drop policy if exists "listings add"    on public.listings;
 drop policy if exists "listings change" on public.listings;
 drop policy if exists "listings remove" on public.listings;
-create policy "listings read"   on public.listings for select to authenticated using (public.app_role() in ('admin', 'editor', 'viewer'));
-create policy "listings add"    on public.listings for insert to authenticated with check (public.app_role() in ('admin', 'editor'));
-create policy "listings change" on public.listings for update to authenticated using (public.app_role() = 'admin') with check (public.app_role() = 'admin');
-create policy "listings remove" on public.listings for delete to authenticated using (public.app_role() = 'admin');
+create policy "listings read"   on public.listings for select to authenticated using ((select public.app_role()) in ('admin', 'editor', 'viewer'));
+create policy "listings add"    on public.listings for insert to authenticated with check ((select public.app_role()) in ('admin', 'editor'));
+create policy "listings change" on public.listings for update to authenticated using ((select public.app_role()) = 'admin') with check ((select public.app_role()) = 'admin');
+create policy "listings remove" on public.listings for delete to authenticated using ((select public.app_role()) = 'admin');
 
 drop policy if exists "requests read"   on public.requests;
 drop policy if exists "requests add"    on public.requests;
 drop policy if exists "requests change" on public.requests;
 drop policy if exists "requests remove" on public.requests;
-create policy "requests read"   on public.requests for select to authenticated using (public.app_role() in ('admin', 'editor', 'viewer'));
-create policy "requests add"    on public.requests for insert to authenticated with check (public.app_role() = 'admin' or (public.app_role() = 'editor' and status = 'open'));
-create policy "requests change" on public.requests for update to authenticated using (public.app_role() = 'admin') with check (public.app_role() = 'admin');
-create policy "requests remove" on public.requests for delete to authenticated using (public.app_role() = 'admin');
+create policy "requests read"   on public.requests for select to authenticated using ((select public.app_role()) in ('admin', 'editor', 'viewer'));
+create policy "requests add"    on public.requests for insert to authenticated with check ((select public.app_role()) = 'admin' or ((select public.app_role()) = 'editor' and status = 'open'));
+create policy "requests change" on public.requests for update to authenticated using ((select public.app_role()) = 'admin') with check ((select public.app_role()) = 'admin');
+create policy "requests remove" on public.requests for delete to authenticated using ((select public.app_role()) = 'admin');
 
 drop policy if exists "seen read"   on public.seen;
 drop policy if exists "seen add"    on public.seen;
 drop policy if exists "seen remove" on public.seen;
-create policy "seen read"   on public.seen for select to authenticated using (public.app_role() in ('admin', 'editor', 'viewer'));
-create policy "seen add"    on public.seen for insert to authenticated with check (public.app_role() in ('admin', 'editor'));
-create policy "seen remove" on public.seen for delete to authenticated using (public.app_role() = 'admin');
+create policy "seen read"   on public.seen for select to authenticated using ((select public.app_role()) in ('admin', 'editor', 'viewer'));
+create policy "seen add"    on public.seen for insert to authenticated with check ((select public.app_role()) in ('admin', 'editor'));
+create policy "seen remove" on public.seen for delete to authenticated using ((select public.app_role()) = 'admin');
 
 drop policy if exists "users read"   on public.app_users;
 drop policy if exists "users add"    on public.app_users;
@@ -114,16 +114,16 @@ drop policy if exists "users change" on public.app_users;
 drop policy if exists "users remove" on public.app_users;
 create policy "users read"   on public.app_users for select to authenticated
   using (public.app_role() = 'admin' or email = lower(coalesce(auth.jwt() ->> 'email', '')));
-create policy "users add"    on public.app_users for insert to authenticated with check (public.app_role() = 'admin');
-create policy "users change" on public.app_users for update to authenticated using (public.app_role() = 'admin') with check (public.app_role() = 'admin');
-create policy "users remove" on public.app_users for delete to authenticated using (public.app_role() = 'admin');
+create policy "users add"    on public.app_users for insert to authenticated with check ((select public.app_role()) = 'admin');
+create policy "users change" on public.app_users for update to authenticated using ((select public.app_role()) = 'admin') with check ((select public.app_role()) = 'admin');
+create policy "users remove" on public.app_users for delete to authenticated using ((select public.app_role()) = 'admin');
 
 drop policy if exists "meta read"  on public.meta;
 drop policy if exists "meta add"   on public.meta;
 drop policy if exists "meta change" on public.meta;
-create policy "meta read"   on public.meta for select to authenticated using (public.app_role() in ('admin', 'editor', 'viewer') and id <> 'driveState');
-create policy "meta add"    on public.meta for insert to authenticated with check (public.app_role() = 'admin' and id in ('branding', 'groupSources'));
-create policy "meta change" on public.meta for update to authenticated using (public.app_role() = 'admin' and id in ('branding', 'groupSources')) with check (public.app_role() = 'admin' and id in ('branding', 'groupSources'));
+create policy "meta read"   on public.meta for select to authenticated using ((select public.app_role()) in ('admin', 'editor', 'viewer') and id <> 'driveState');
+create policy "meta add"    on public.meta for insert to authenticated with check ((select public.app_role()) = 'admin' and id in ('branding', 'groupSources'));
+create policy "meta change" on public.meta for update to authenticated using ((select public.app_role()) = 'admin' and id in ('branding', 'groupSources')) with check ((select public.app_role()) = 'admin' and id in ('branding', 'groupSources'));
 
 -- ── import: new items are added; a RE-POST (same id) only replaces the old copy when it is NEWER ──
 -- Editors may only import through this function (they still cannot update or delete rows directly).
@@ -186,3 +186,10 @@ do $$ begin
     grant execute on function public.import_items(text, jsonb) to service_role;
   end if;
 end $$;
+
+-- ── speed ───────────────────────────────────────────────────────────────────
+-- The policies above call (select public.app_role()) so Postgres evaluates the role ONCE per request
+-- (a bare function call in a policy is evaluated for every row: 16,000 rows took 20 s and hit the 8 s limit).
+-- A longer limit is a safety net for the big first load.
+alter role authenticated set statement_timeout = '30s';
+notify pgrst, 'reload config';
