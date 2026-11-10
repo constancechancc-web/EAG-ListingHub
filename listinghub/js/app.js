@@ -545,11 +545,13 @@ function listingCard(l, { showMatchBtn = true } = {}) {
       ${l.bankValue ? `<div class="spec">${bankValueHTML(l)}</div>` : ''}
       <div class="agent">REN <b>${esc(l.renName)}</b>${l.renPhone ? ` · ${esc(l.renPhone)}` : ''}</div>
       <div class="meta">${esc(l.group)} · ${postedLabel(l.postedAt)}</div>
-      <details class="raw"><summary>Original WhatsApp message 原始讯息</summary><pre>${esc(l.raw)}</pre></details>
-      <div class="actions">
-        <button class="btn wa small" data-act="wa-ren" data-id="${esc(l.id)}">WhatsApp REN 联系经纪</button>
-        <button class="btn small" data-act="copy-summary" data-id="${esc(l.id)}">Copy 复制资料</button>
-        ${showMatchBtn ? `<button class="btn dark small" data-act="show-matches" data-id="${esc(l.id)}"><span data-mc="${esc(l.id)}">…</span> matching clients →</button>` : ''}
+      <div class="card-foot">
+        <details class="raw"><summary>Original WhatsApp message 原始讯息</summary><pre>${esc(l.raw)}</pre></details>
+        <div class="actions">
+          <button class="btn wa small" data-act="wa-ren" data-id="${esc(l.id)}">WhatsApp REN 联系经纪</button>
+          <button class="btn small" data-act="copy-summary" data-id="${esc(l.id)}">Copy 复制资料</button>
+          ${showMatchBtn ? `<button class="btn dark small" data-act="show-matches" data-id="${esc(l.id)}"><span data-mc="${esc(l.id)}">…</span> matching clients →</button>` : ''}
+        </div>
       </div>
     </article>`;
 }
@@ -655,13 +657,15 @@ function pairCard(p) {
         ${esc(l.type)} ${esc(TYPE_ZH[l.type] || '')} · ${esc(l.region)} · REN ${esc(l.renName)}
       </div>
       <ul class="reasons">${reasons}</ul>
-      <details class="raw"><summary>Listing original post 房源原文</summary><pre>${esc(l.raw)}</pre></details>
-      <details class="raw"><summary>WTB/WTR original post 需求原文</summary><pre>${esc(r.raw)}</pre></details>
-      <div class="actions">
-        <button class="btn small" data-act="copy-raw-l" data-id="${esc(l.id)}">Copy listing post 复制房源</button>
-        <button class="btn small" data-act="copy-raw-r" data-id="${esc(r.id)}">Copy WTB post 复制需求</button>
-        <button class="btn wa small" data-act="wa-client" data-id="${esc(r.id)}" data-lid="${esc(l.id)}">WhatsApp Client Agent 联系客户经纪</button>
-        <button class="btn wa small" data-act="wa-ren" data-id="${esc(l.id)}">WhatsApp Listing Agent 联系房源经纪</button>
+      <div class="card-foot">
+        <details class="raw"><summary>Listing original post 房源原文</summary><pre>${esc(l.raw)}</pre></details>
+        <details class="raw"><summary>WTB/WTR original post 需求原文</summary><pre>${esc(r.raw)}</pre></details>
+        <div class="actions">
+          <button class="btn small" data-act="copy-raw-l" data-id="${esc(l.id)}">Copy listing post 复制房源</button>
+          <button class="btn small" data-act="copy-raw-r" data-id="${esc(r.id)}">Copy WTB post 复制需求</button>
+          <button class="btn wa small" data-act="wa-client" data-id="${esc(r.id)}" data-lid="${esc(l.id)}">WhatsApp Client Agent 联系客户经纪</button>
+          <button class="btn wa small" data-act="wa-ren" data-id="${esc(l.id)}">WhatsApp Listing Agent 联系房源经纪</button>
+        </div>
       </div>
     </article>`;
 }
@@ -722,10 +726,12 @@ function renderReqList(reset) {
         <div class="spec">${esc(budgetText(full))}${a.bedMin ? ` · ${a.bedMin}+ bed` : ''}${a.furnishing ? ' · ' + esc(a.furnishing) : ''}</div>
         <div class="agent">Agent <b>${esc(r.renName)}</b>${r.renPhone ? ' · ' + esc(r.renPhone) : ''}</div>
         <div class="meta">${esc(r.group)} · ${postedLabel(r.postedAt)}</div>
-        <details class="raw"><summary>Original post 原文</summary><pre>${esc(r.raw)}</pre></details>
-        <div class="actions">
-          <button class="btn small" data-act="req-toggle" data-id="${esc(r.id)}">${closed ? 'Reopen 重新开启' : 'Close 结束'}</button>
-          <button class="btn danger small" data-act="req-delete" data-id="${esc(r.id)}">Delete 删除</button>
+        <div class="card-foot">
+          <details class="raw"><summary>Original post 原文</summary><pre>${esc(r.raw)}</pre></details>
+          <div class="actions">
+            <button class="btn small" data-act="req-toggle" data-id="${esc(r.id)}">${closed ? 'Reopen 重新开启' : 'Close 结束'}</button>
+            <button class="btn danger small" data-act="req-delete" data-id="${esc(r.id)}">Delete 删除</button>
+          </div>
         </div>
       </article>`;
   }).join('') || `<div class="empty">No requests 没有需求</div>`;
