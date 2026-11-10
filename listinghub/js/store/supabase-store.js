@@ -15,27 +15,43 @@ export function createSupabaseStore() {
 
   const check = ({ data, error }) => { if (error) throw new Error(error.message); return data; };
 
-  /** All rows of a table. The first page also returns the total, then the rest load 5 pages at a time. */
-  async function selectAll(table, columns, filter) {
-    const order = table === 'seen' ? 'hash' : table === 'app_users' ? 'email' : 'id';
-    const page = (from, withCount) => {
-      let q = sb.from(table).select(columns, withCount ? { count: 'exact' } : undefined).order(order).range(from, from + PAGE - 1);
+  // Rows are read with KEYSET paging ("id greater than the last one I got"): every request is a quick lookup in the
+  // primary-key index. (Offset paging made the database sort the whole table for every page: 20 s per page.)
+  const KEY = { seen: 'hash', app_users: 'email' };
+  const keyOf = (table) => KEY[table] || 'id';
+
+  /** Rows with key in [lo, hi) (null = open end), one page after the other. `columns` must not include the key. */
+  async function keysetRange(table, columns, filter, lo = null, hi = null) {
+    const key = keyOf(table);
+    const out = [];
+    let after = null;
+    for (;;) {
+      let q = sb.from(table).select(`${key},${columns}`).order(key).limit(PAGE);
+      if (after != null) q = q.gt(key, after);
+      else if (lo != null) q = q.gte(key, lo);
+      if (hi != null) q = q.lt(key, hi);
       if (filter) q = filter(q);
-      return q;
-    };
-    const first = await page(0, true);
-    const firstRows = check(first);
-    if (firstRows.length < PAGE) return firstRows;
-    const pages = first.count != null ? Math.ceil(first.count / PAGE) : null;
-    if (pages == null) { // total unknown → one page after the other
-      const out = [...firstRows];
-      for (let from = PAGE; ; from += PAGE) { const rows = check(await page(from)); out.push(...rows); if (rows.length < PAGE) return out; }
+      const rows = check(await q);
+      out.push(...rows);
+      if (rows.length < PAGE) return out;
+      after = rows[rows.length - 1][key];
     }
-    const results = new Array(pages);
-    results[0] = firstRows;
-    let next = 1;
-    await Promise.all(Array.from({ length: Math.min(5, pages - 1) }, async () => {
-      while (next < pages) { const p = next++; results[p] = check(await page(p * PAGE)); }
+  }
+
+  const selectAll = (table, columns, filter) => keysetRange(table, columns, filter);
+
+  /**
+   * Big tables (listings): ids are hashes in base 36, evenly spread, so the table is cut into slices by first
+   * character and 6 slices load at the same time. The slices cover every possible id (no gaps, no overlaps).
+   */
+  async function selectAllSliced(table, columns, filter) {
+    const ALPHA = '0123456789abcdefghijklmnopqrstuvwxyz';
+    const slices = [[null, ALPHA[0]]];
+    for (let i = 0; i < ALPHA.length; i++) slices.push([ALPHA[i], i + 1 < ALPHA.length ? ALPHA[i + 1] : null]);
+    const results = new Array(slices.length);
+    let next = 0;
+    await Promise.all(Array.from({ length: 6 }, async () => {
+      while (next < slices.length) { const n = next++; results[n] = await keysetRange(table, columns, filter, slices[n][0], slices[n][1]); }
     }));
     return results.flat();
   }
@@ -95,7 +111,7 @@ export function createSupabaseStore() {
 
     async loadAll(fromDay) {
       const f = fromDay ? (q) => q.gte('day', fromDay) : null;
-      const [l, r] = await Promise.all([selectAll('listings', 'data', f), selectAll('requests', 'data,status', f)]);
+      const [l, r] = await Promise.all([selectAllSliced('listings', 'data', f), selectAll('requests', 'data,status', f)]);
       return { listings: l.map(fromRow), requests: r.map(fromRow) };
     },
 
@@ -103,7 +119,7 @@ export function createSupabaseStore() {
       const set = new Set();
       for (let i = 0; i < days.length; i += 50) {
         const chunk = days.slice(i, i + 50);
-        for (const r of await selectAll('seen', 'hash', (q) => q.in('day', chunk))) set.add(r.hash);
+        for (const r of await selectAll('seen', 'day', (q) => q.in('day', chunk))) set.add(r.hash);
       }
       return set;
     },
@@ -125,7 +141,7 @@ export function createSupabaseStore() {
 
     async exportAll() {
       const [l, r, users, seenRows] = await Promise.all([
-        selectAll('listings', 'data'), selectAll('requests', 'data,status'), selectAll('app_users', 'email,role,added_at'), selectAll('seen', 'hash,day'),
+        selectAllSliced('listings', 'data'), selectAll('requests', 'data,status'), selectAll('app_users', 'role,added_at'), selectAll('seen', 'day'),
       ]);
       const seen = new Map();
       for (const s of seenRows) { if (!seen.has(s.day)) seen.set(s.day, []); seen.get(s.day).push(s.hash); }
@@ -151,7 +167,7 @@ export function createSupabaseStore() {
       check(await sb.from('seen').delete().neq('hash', ''));
     },
 
-    listUsers: () => selectAll('app_users', 'email,role,added_at'),
+    listUsers: () => selectAll('app_users', 'role,added_at'),
     async setUser(email, role) {
       check(await sb.from('app_users').upsert({ email: email.toLowerCase().trim(), role }, { onConflict: 'email' }));
     },
