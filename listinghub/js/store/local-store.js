@@ -66,7 +66,12 @@ export function createLocalStore() {
       const l = await putMany('L', listings.map(strip));
       const r = await putMany('R', requests.map(strip));
       if (newHashes.length) await putMany('seen', newHashes);
+      if (l || r) await this.setMeta('lastImport', { at: new Date().toISOString() });
       return { listings: l, requests: r };
+    },
+    async lastUpdated() {
+      const m = await this.getMeta('lastImport');
+      return m && m.at ? m.at : null;
     },
     async updateRequest(item, patch) {
       const tx = (await dbP).transaction('R', 'readwrite');

@@ -135,6 +135,16 @@ export function createSupabaseStore() {
     },
     async removeUser(email) { check(await sb.from('app_users').delete().eq('email', email)); },
 
+    /** Time the newest listing or request was added (by any import, manual or scheduled). */
+    async lastUpdated() {
+      const newest = async (t) => {
+        const rows = check(await sb.from(t).select('created_at').order('created_at', { ascending: false }).limit(1));
+        return rows && rows[0] ? rows[0].created_at : null;
+      };
+      const [a, b] = await Promise.all([newest('listings'), newest('requests')]);
+      return [a, b].filter(Boolean).sort().pop() || null;
+    },
+
     async getMeta(id) {
       const rows = check(await sb.from('meta').select('data').eq('id', id).limit(1));
       return rows && rows[0] ? rows[0].data : null;

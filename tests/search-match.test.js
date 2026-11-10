@@ -4,7 +4,15 @@ import { parseMessage } from '../listinghub/js/core/parse.js';
 import { searchListings } from '../listinghub/js/core/search.js';
 import { buildMatchIndex, prepareRequest, matchRequest, matchListing, matchAll, evaluatePair } from '../listinghub/js/core/match.js';
 import { buildAreaVocab } from '../listinghub/js/core/areas.js';
-import { listingEnquiry, clientAgentMessage, waLink, DIVIDER } from '../listinghub/js/core/messages.js';
+import { listingEnquiry, clientAgentMessage, waLink, DIVIDER, bankValueDiff, listingSummary } from '../listinghub/js/core/messages.js';
+
+test('percent below / above bank value', () => {
+  assert.equal(bankValueDiff({ kind: 'sale', price: 486000, bankValue: 600000 }), 19);
+  assert.equal(bankValueDiff({ kind: 'sale', price: 660000, bankValue: 600000 }), -10);
+  assert.equal(bankValueDiff({ kind: 'sale', price: null, bankValue: 600000 }), null);
+  assert.equal(bankValueDiff({ kind: 'rent', price: 2000, bankValue: 600000 }), null);
+  assert.match(listingSummary({ kind: 'sale', title: 'X', price: 486000, bankValue: 600000 }), /19% below BV 低于估价/);
+});
 import { phraseIn } from '../listinghub/js/core/text.js';
 import { L, R } from './fixtures.js';
 

@@ -1,10 +1,11 @@
 // EAG Listing Hub — browser app. Search and matching run here with plain code (no AI, no cost).
 import { SUPABASE_URL, SUPABASE_ANON_KEY, AI_ENDPOINT } from './supabase-config.js';
-import { CATEGORIES, CATEGORY_ZH, TYPES, TYPE_ZH, REGION_NAMES, SOURCE_EAG, SOURCE_TRR, RETENTION_DAYS } from './core/constants.js';
+import { CATEGORIES, CATEGORY_ZH, TYPES, TYPE_ZH, REGION_NAMES, SOURCE_EAG, SOURCE_CO, SOURCES, RETENTION_DAYS } from './core/constants.js';
+import { sourceForGroup, groupKey } from './core/whatsapp.js';
 import { searchListings, prepareListing, cutoffTime } from './core/search.js';
 import { buildMatchIndex, prepareRequest, matchAll, matchListing, runSliced } from './core/match.js';
 import { buildAreaVocab } from './core/areas.js';
-import { listingEnquiry, clientAgentMessage, waLink, listingSummary } from './core/messages.js';
+import { listingEnquiry, clientAgentMessage, waLink, listingSummary, bankValueDiff } from './core/messages.js';
 import { fmtRM, compilePhrase, fieldHas, prepField, digitsOnly, norm } from './core/text.js';
 import { analyseRequest } from './core/parse.js';
 
@@ -27,7 +28,11 @@ const S = {
   pairsShown: 20,
   rq: { kind: '', status: 'open', q: '' },
   rqShown: 30,
+  groupMap: {}, // admin overrides: groupKey → source
+  lastUpdated: null, // ISO time of the newest import
+  matchTotal: null, // number of match pairs (computed in the background)
 };
+const APP_VERSION = 'v2.0';
 const PAGE = 30;
 const pref = {
   get: (k, d = '') => { try { return localStorage.getItem('eag.' + k) ?? d; } catch { return d; } },
@@ -159,17 +164,42 @@ function renderDenied(u) {
 }
 
 async function loadData() {
-  const { listings, requests } = await S.store.loadAll(fromDay());
+  const [{ listings, requests }, gs, last] = await Promise.all([
+    S.store.loadAll(fromDay()),
+    S.store.getMeta('groupSources').catch(() => null),
+    S.store.lastUpdated().catch(() => null),
+  ]);
   const uniq = (arr) => { const m = new Map(); for (const x of arr) m.set(x.id, x); return [...m.values()]; };
+  S.groupMap = (gs && gs.map) || {};
+  S.lastUpdated = last;
   S.listings = uniq(listings).map(prepareListing);
   S.requests = uniq(requests);
+  applySources();
   dataChanged();
+}
+
+/** Source comes from the group name (rules + Admin overrides), so a change applies to old items too. */
+function applySources() {
+  for (const x of S.listings) x.source = sourceForGroup(x.group, S.groupMap);
+  for (const x of S.requests) x.source = sourceForGroup(x.group, S.groupMap);
 }
 
 function dataChanged() {
   S.vocab = buildAreaVocab(S.listings);
   S.prepared = null;
+  S.matchTotal = null;
   S.prepGen++;
+}
+
+/** Total number of listing ↔ WTB/WTR pairs, computed once in the background. */
+async function computeMatchTotal() {
+  if (S.matchTotal != null) return S.matchTotal;
+  const gen = S.prepGen;
+  const prepared = await ensurePrepared();
+  const pairs = await matchAll(prepared.filter((r) => r.status !== 'closed'), buildMatchIndex(S.listings), { isCurrent: () => gen === S.prepGen });
+  if (!pairs) return null;
+  S.matchTotal = pairs.length;
+  return S.matchTotal;
 }
 
 /** Re-read every request's text (sliced so the page stays responsive). */
@@ -215,7 +245,6 @@ function renderShell() {
       <span class="role-badge">${roleName}</span>
       <span>${esc(u.email)}</span>
       <span class="spacer"></span>
-      <span class="muted">${S.listings.length.toLocaleString()} listings · ${S.requests.length.toLocaleString()} WTB/WTR</span>
       <button class="btn small" data-act="signout">Sign out 登出</button>
     </div>
     <nav class="tabs" role="tablist">
@@ -236,14 +265,109 @@ function renderView() {
 function prefsBar() {
   const lang = pref.get('lang', 'en');
   return `
-    <div class="row" style="margin:4px 0 8px">
-      <label class="f" style="flex:1 1 180px"><span>Your name 你的名字 (for WhatsApp)</span>
+    <div class="prefs">
+      <label class="f prefs-name"><span>Your name 你的名字 (for WhatsApp)</span>
         <input type="text" data-pref="name" value="${esc(pref.get('name'))}" placeholder="e.g. Amy Tan"></label>
-      <div class="seg" style="align-self:flex-end" aria-label="Message language">
-        <button data-lang="en" class="${lang === 'en' ? 'is-active' : ''}">EN</button>
-        <button data-lang="zh" class="${lang === 'zh' ? 'is-active' : ''}">华语</button>
+      <div class="prefs-lang">
+        <span class="prefs-lang-label">WhatsApp message language<br>信息语言</span>
+        <div class="seg" aria-label="WhatsApp message language">
+          <button data-lang="en" class="${lang === 'en' ? 'is-active' : ''}">EN</button>
+          <button data-lang="zh" class="${lang === 'zh' ? 'is-active' : ''}">华语</button>
+        </div>
       </div>
     </div>`;
+}
+
+// ───────────────────────── stats tiles ─────────────────────────
+const ICON = {
+  title: '<path d="M4 6h16M4 12h10M4 18h13"/>',
+  house: '<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/><path d="M10 20v-5.5h4V20"/>',
+  people: '<circle cx="9" cy="8" r="3.4"/><path d="M2.8 20c0-3.5 2.8-6 6.2-6s6.2 2.5 6.2 6"/><circle cx="17.2" cy="8.8" r="2.7"/><path d="M16.6 13.9c2.8.2 4.6 2.4 4.6 5.4"/>',
+  hands: '<path d="m2 11 4.5-4 4 1.8L14 7l3.5 1.5L22 11"/><path d="m6.5 7-4.3 4.2 4.4 4.3 2.6 1.8 2.6-.8 2.6 1.2 4.3-4.4"/><path d="m10.2 12.6 2.2 2.1M12.8 11.2l2.3 2.2"/>',
+  refresh: '<path d="M20 11.5A8 8 0 0 0 6.3 6.2L4 8.5"/><path d="M4 3.5v5h5"/><path d="M4 12.5a8 8 0 0 0 13.7 5.3l2.3-2.3"/><path d="M20 20.5v-5h-5"/>',
+};
+const svg = (name, cls = 'stat-ico') => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[name]}</svg>`;
+
+const MYT = 'Asia/Kuala_Lumpur';
+const fmtDate = (iso) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: MYT });
+const fmtTime = (iso) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: MYT }).toLowerCase();
+const isTestSite = () => S.store.mode === 'local' || location.hostname !== 'eag-listinghub.vercel.app';
+
+function statsHTML() {
+  const cut = cutoffTime();
+  const nL = S.listings.filter((l) => l._t >= cut).length;
+  const nR = S.requests.filter((r) => Date.parse(r.postedAt) >= cut && r.status !== 'closed').length;
+  const up = S.lastUpdated;
+  const tile = (icon, label, value, id = '') => `
+    <div class="stat-tile">${svg(icon)}<div><div class="stat-label">${label}</div><div class="stat-value"${id ? ` id="${id}"` : ''}>${value}</div></div></div>`;
+  return `
+    <section class="stats-head">
+      <h2 class="page-title">${svg('title', 'title-ico')}房源搜索 Listing Search</h2>
+      <div class="stats-grid">
+        ${tile('house', '房源 Listings', nL.toLocaleString())}
+        ${tile('people', '买租需求 WTB/WTR', nR.toLocaleString())}
+        ${tile('hands', '配对 Matches', S.matchTotal != null ? S.matchTotal.toLocaleString() : '<span class="muted">…</span>', 'statMatches')}
+        ${tile('refresh', '更新于 Updated', up ? `<span class="stat-date">${esc(fmtDate(up))}</span>` : '<span class="stat-date muted">—</span>')}
+      </div>
+      <p class="stats-sub"><span class="mono">${APP_VERSION}${isTestSite() ? ' test' : ''}</span> · last ${RETENTION_DAYS} days 最近${RETENTION_DAYS}天${up ? ` · last update 最后更新 ${esc(fmtDate(up))} ${esc(fmtTime(up))}` : ''}</p>
+    </section>`;
+}
+
+async function fillStats() {
+  const n = await computeMatchTotal();
+  const el = document.getElementById('statMatches');
+  if (el && n != null) el.textContent = n.toLocaleString();
+}
+
+/** "Bank value 银行估价 RM 600,000 · 19% below BV 低于估价" */
+function bankValueHTML(l) {
+  let html = `Bank value 银行估价 <b class="mono">${fmtRM(l.bankValue)}</b>`;
+  const d = bankValueDiff(l);
+  if (d != null) {
+    if (d > 0) html += ` · <span class="bv-below">${d}% below BV 低于估价</span>`;
+    else if (d < 0) html += ` · <span class="bv-above">${-d}% above BV 高于估价</span>`;
+    else html += ` · <span class="muted">same as BV 等于估价</span>`;
+  }
+  return html;
+}
+
+// ───────────────────────── group sources (admin) ─────────────────────────
+function renderGroups() {
+  const box = document.getElementById('groupList');
+  if (!box) return;
+  const counts = new Map();
+  for (const x of [...S.listings, ...S.requests]) {
+    if (!x.group) continue;
+    const k = groupKey(x.group);
+    const c = counts.get(k) || { name: x.group, n: 0 };
+    c.n++;
+    counts.set(k, c);
+  }
+  for (const k of Object.keys(S.groupMap)) if (!counts.has(k)) counts.set(k, { name: k, n: 0 });
+  const rows = [...counts.entries()].sort((a, b) => b[1].n - a[1].n);
+  if (!rows.length) { box.innerHTML = '<p class="muted small">No groups yet — import a chat first. 还没有群组，请先导入聊天。</p>'; return; }
+  box.innerHTML = `<table class="simple">${rows.map(([k, c]) => {
+    const cur = sourceForGroup(c.name, S.groupMap);
+    const changed = !!S.groupMap[k];
+    return `<tr><td>${esc(c.name)}<div class="muted small">${c.n.toLocaleString()} items${changed ? ' · changed by Admin 已手动修改' : ''}</div></td>
+      <td style="width:150px"><select data-gsrc="${esc(k)}" data-gname="${esc(c.name)}">${SOURCES.map((x) => opt(x.id, x.label, cur)).join('')}</select></td></tr>`;
+  }).join('')}</table>`;
+}
+
+async function saveGroupSource(el) {
+  const key = el.dataset.gsrc, name = el.dataset.gname, val = el.value;
+  const map = { ...S.groupMap };
+  if (sourceForGroup(name) === val) delete map[key]; // same as the built-in rule → no override needed
+  else map[key] = val;
+  try {
+    await S.store.setMeta('groupSources', { map });
+    S.groupMap = map;
+    applySources();
+    renderGroups();
+    toast('Saved 已保存');
+  } catch (e) {
+    toast('Failed 失败: ' + e.message, 4000);
+  }
 }
 
 // ───────────────────────── global events (delegated) ─────────────────────────
@@ -339,6 +463,7 @@ function onChange(e) {
   if (el.dataset.m && el.tagName === 'SELECT') { S.m[el.dataset.m] = el.value; runMatch(); }
   if (el.dataset.rq && el.tagName === 'SELECT') { S.rq[el.dataset.rq] = el.value; renderReqList(true); }
   if (el.dataset.file) fileHandlers[el.dataset.file]?.(el);
+  if (el.dataset.gsrc != null) saveGroupSource(el);
 }
 
 const segHandlers = {};
@@ -352,6 +477,7 @@ function viewSearch(v) {
   const f = S.f;
   const types = TYPES.filter((t) => !f.category || t.cat === f.category);
   v.innerHTML = `
+    ${statsHTML()}
     <section class="panel">
       <div class="searchbox"><input type="search" data-f="q" value="${esc(f.q)}" placeholder="Keyword 关键词 e.g. Johor Jaya, Eco Palladium, 0123…" aria-label="Keyword"></div>
       <div class="grid3 wide">
@@ -359,7 +485,7 @@ function viewSearch(v) {
         <label class="f"><span>Category 类别</span><select data-f="category">${opt('', 'All 全部', f.category)}${CATEGORIES.map((c) => opt(c, `${c} ${CATEGORY_ZH[c]}`, f.category)).join('')}</select></label>
         <label class="f"><span>Type 类型</span><select data-f="type">${opt('', 'All 全部', f.type)}${types.map((t) => opt(t.id, `${t.id} ${t.zh}`, f.type)).join('')}</select></label>
         <label class="f"><span>Region 区域</span><select data-f="region">${opt('', 'All 全部', f.region)}${[...REGION_NAMES, 'Other'].map((r) => opt(r, r, f.region)).join('')}</select></label>
-        <label class="f"><span>Source 来源</span><select data-f="source">${opt('', 'All 全部', f.source)}${opt(SOURCE_EAG, 'EAG', f.source)}${opt(SOURCE_TRR, 'TRR', f.source)}</select></label>
+        <label class="f"><span>Source 来源</span><select data-f="source">${opt('', 'All 全部', f.source)}${SOURCES.map((x) => opt(x.id, x.label, f.source)).join('')}</select></label>
         <label class="f"><span>Bedrooms 房间</span><select data-f="bedMin">${opt('', 'Any 不限', f.bedMin)}${[1, 2, 3, 4, 5].map((n) => opt(n, `${n}+`, f.bedMin)).join('')}</select></label>
       </div>
       <div class="grid2" style="margin-top:8px">
@@ -380,6 +506,7 @@ function viewSearch(v) {
     <div class="cards" id="results"></div>
     <div id="resMore"></div>`;
   runSearch();
+  fillStats();
 }
 
 const debouncedSearch = debounce(() => runSearch(), 220);
@@ -395,7 +522,7 @@ function listingCard(l, { showMatchBtn = true } = {}) {
     `<span class="chip k-${l.kind}">${l.kind === 'rent' ? 'For rent 出租' : 'For sale 出售'}</span>`,
     l.type && l.type !== 'Other' ? `<span class="chip">${esc(l.type)} ${esc(TYPE_ZH[l.type] || '')}</span>` : `<span class="chip">${esc(l.category || 'Other')}</span>`,
     l.region ? `<span class="chip">${esc(l.region)}</span>` : '',
-    `<span class="chip ${l.source === SOURCE_EAG ? 'src-eag' : ''}">${l.source === SOURCE_EAG ? 'EAG' : 'TRR'}</span>`,
+    `<span class="chip ${l.source === SOURCE_EAG ? 'src-eag' : l.source === SOURCE_CO ? 'src-co' : ''}">${esc((SOURCES.find((x) => x.id === l.source) || SOURCES[2]).short)}</span>`,
   ].join('');
   const size = [
     l.dims && `Dimension 尺寸 ${esc(l.dims)}`,
@@ -415,7 +542,7 @@ function listingCard(l, { showMatchBtn = true } = {}) {
       ${room ? `<div class="spec">${esc(room)}</div>` : ''}
       ${lot.length ? `<div class="spec">Lot 位置: ${esc(lot.join(', '))}</div>` : ''}
       ${feats.length ? `<div class="spec">✦ ${esc(feats.join(' · '))}</div>` : ''}
-      ${l.bankValue ? `<div class="spec">Bank value 银行估价 ${fmtRM(l.bankValue)}</div>` : ''}
+      ${l.bankValue ? `<div class="spec">${bankValueHTML(l)}</div>` : ''}
       <div class="agent">REN <b>${esc(l.renName)}</b>${l.renPhone ? ` · ${esc(l.renPhone)}` : ''}</div>
       <div class="meta">${esc(l.group)} · ${postedLabel(l.postedAt)}</div>
       <details class="raw"><summary>Original WhatsApp message 原始讯息</summary><pre>${esc(l.raw)}</pre></details>
@@ -705,10 +832,12 @@ fileHandlers.chat = async (input) => {
     for (const l of res.listings) if (!have.has(l.id)) S.listings.push(prepareListing(l));
     const haveR = new Set(S.requests.map((r) => r.id));
     for (const r of res.requests) if (!haveR.has(r.id)) S.requests.push(r);
+    applySources();
+    if (added.listings || added.requests) S.lastUpdated = new Date().toISOString();
     dataChanged();
     const dupes = res.duplicates + (res.listings.length - added.listings) + (res.requests.length - added.requests);
     setImp(`
-      <p class="ok">Done 完成 · ${esc(parsed.group)} (${esc(res.source)})</p>
+      <p class="ok">Done 完成 · ${esc(parsed.group)} (${esc(sourceForGroup(parsed.group, S.groupMap))})</p>
       <div class="stats">
         <div class="stat"><b>${added.listings}</b>New listings 新房源</div>
         <div class="stat"><b>${added.requests}</b>New WTB/WTR 新需求</div>
@@ -729,8 +858,6 @@ fileHandlers.chat = async (input) => {
     worker.terminate();
     input.disabled = false;
     input.value = '';
-    const ub = document.querySelector('.userbar .muted');
-    if (ub) ub.textContent = `${S.listings.length.toLocaleString()} listings · ${S.requests.length.toLocaleString()} WTB/WTR`;
   }
 };
 
@@ -782,6 +909,12 @@ async function viewBackup(v) {
       <div id="userList" style="margin-top:12px"><div class="spinner"></div></div>
     </section>
     <section class="panel">
+      <h2>Group sources 群组来源</h2>
+      <p class="small muted">Each WhatsApp group belongs to EAG Listing, TRR Groups or Co Agency. Change a group here if it is sorted wrongly — old and new listings follow.<br>
+      每个 WhatsApp 群组属于 EAG Listing、TRR Groups 或 Co Agency。分错了可以在这里改，旧的和新的房源都会跟着改。</p>
+      <div id="groupList"></div>
+    </section>
+    <section class="panel">
       <h2>App logo 应用标志</h2>
       <p class="small muted">Change the logo shown on the cover. 更换封面上的标志。</p>
       <input type="file" data-file="logo">
@@ -793,6 +926,7 @@ async function viewBackup(v) {
       <button class="btn danger" data-act="clear-all">Clear all 清空全部</button>
     </section>`;
   renderUsers();
+  renderGroups();
 }
 
 function download(name, text) {

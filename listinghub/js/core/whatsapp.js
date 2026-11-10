@@ -1,6 +1,6 @@
 // WhatsApp export → messages. Pure code, no DOM: used in the browser worker, the cron job and tests.
-import { SOURCE_EAG, SOURCE_TRR } from './constants.js';
-import { stripInvisible, hash53 } from './text.js';
+import { SOURCE_CO, GROUP_SOURCE_RULES } from './constants.js';
+import { stripInvisible, stripEmoji, hash53 } from './text.js';
 
 /** "WhatsApp Chat with JB TRR Rent 1 Listing Group.zip" → "JB TRR Rent 1 Listing Group" */
 export function groupFromFileName(fileName) {
@@ -12,8 +12,19 @@ export function groupFromFileName(fileName) {
   return stripInvisible(n).trim() || 'Unknown group';
 }
 
-export function sourceForGroup(group) {
-  return /EAG\s*卓越/i.test(group || '') ? SOURCE_EAG : SOURCE_TRR;
+/** Group name as a stable key: emoji/invisible chars removed, lowercase, single spaces. */
+export function groupKey(group) {
+  return stripEmoji(stripInvisible(group || '')).toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/** EAG Listing / TRR Group / Co Agency. `overrides` = { groupKey: source } set by the Admin. */
+export function sourceForGroup(group, overrides) {
+  const key = groupKey(group);
+  if (overrides && overrides[key]) return overrides[key];
+  for (const [source, words] of GROUP_SOURCE_RULES) {
+    if (words.some((w) => key.includes(w))) return source;
+  }
+  return SOURCE_CO;
 }
 
 /** Zip is detected from content ("PK\x03\x04"), never from the extension. */

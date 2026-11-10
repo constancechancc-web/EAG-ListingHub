@@ -86,10 +86,12 @@ test('admin can manage everything but can never create a second admin', async ()
   assert.equal((await as(OWNER, `delete from listings where id = 'L2'`)).affectedRows, 1);
   await as(OWNER, `insert into meta (id, data) values ('branding', '{"logo":""}')`);
   await assert.rejects(as(OWNER, `insert into meta (id, data) values ('other', '{}')`), /row-level security/);
+  await as(OWNER, `insert into meta (id, data) values ('groupSources', '{"map":{}}')`);
+  assert.equal((await as('editor@gmail.com', `update meta set data = '{}' where id = 'groupSources'`)).affectedRows, 0);
 });
 
 test('users can only see their own allowlist row; driveState stays server-only', async () => {
   assert.deepEqual((await rows('viewer@gmail.com', 'select email from app_users')).map((r) => r.email), ['viewer@gmail.com']);
   assert.ok((await rows(OWNER, 'select email from app_users')).length >= 2);
-  assert.deepEqual((await rows('viewer@gmail.com', 'select id from meta order by id')).map((r) => r.id), ['branding', 'importLog']);
+  assert.deepEqual((await rows('viewer@gmail.com', 'select id from meta order by id')).map((r) => r.id), ['branding', 'groupSources', 'importLog']);
 });

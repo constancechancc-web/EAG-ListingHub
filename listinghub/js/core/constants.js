@@ -84,6 +84,28 @@ export const AREA_PREFIXES = ['taman', 'tmn', 'bandar', 'bdr', 'jalan', 'jln', '
 
 export const SOURCE_EAG = 'EAG Listing';
 export const SOURCE_TRR = 'TRR Group';
+export const SOURCE_CO = 'Co Agency';
+export const SOURCES = [
+  { id: SOURCE_EAG, label: 'EAG Listing', short: 'EAG' },
+  { id: SOURCE_TRR, label: 'TRR Groups', short: 'TRR' },
+  { id: SOURCE_CO, label: 'Co Agency', short: 'Co Agency' },
+];
+
+// Which WhatsApp group belongs to which source (matched as lowercase text inside the group name).
+// First rule that matches wins; any group not listed is "Co Agency".
+// The Admin can override a single group on the Backup page.
+export const GROUP_SOURCE_RULES = [
+  [SOURCE_EAG, ['eag 卓越']],
+  [SOURCE_TRR, [
+    'trr',            // JB TRR Rent 1, JB TRR 吹水站, TRR JB Sharing, TRR GV Land …
+    'topsales',       // Topsales listing group (Only For Sales)
+    'tms + eag',      // TMS + EAG Listing
+    'tpg + eag',      // TPG + EAG listing group
+    'tag + eag',      // TAG + EAG Listing Group
+    'eat cobroke',    // EAT Cobroke Group
+    'victor land',    // Victor Land Group 地皮买卖群
+  ]],
+];
 
 // WhatsApp sender names that must be shown differently everywhere.
 export const NAME_OVERRIDES = { '宝贝老公 hubby m': 'Roy Goh' };

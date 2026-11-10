@@ -42,7 +42,7 @@ create table if not exists public.seen (
 );
 create index if not exists seen_day_idx on public.seen (day);
 
--- importLog (scheduled import results), branding (logo), driveState (server only)
+-- importLog (scheduled import results), branding (logo), groupSources (admin's group → source overrides), driveState (server only)
 create table if not exists public.meta (
   id         text primary key,
   data       jsonb not null default '{}'::jsonb,
@@ -122,5 +122,5 @@ drop policy if exists "meta read"  on public.meta;
 drop policy if exists "meta add"   on public.meta;
 drop policy if exists "meta change" on public.meta;
 create policy "meta read"   on public.meta for select to authenticated using (public.app_role() in ('admin', 'editor', 'viewer') and id <> 'driveState');
-create policy "meta add"    on public.meta for insert to authenticated with check (public.app_role() = 'admin' and id = 'branding');
-create policy "meta change" on public.meta for update to authenticated using (public.app_role() = 'admin' and id = 'branding') with check (public.app_role() = 'admin' and id = 'branding');
+create policy "meta add"    on public.meta for insert to authenticated with check (public.app_role() = 'admin' and id in ('branding', 'groupSources'));
+create policy "meta change" on public.meta for update to authenticated using (public.app_role() = 'admin' and id in ('branding', 'groupSources')) with check (public.app_role() = 'admin' and id in ('branding', 'groupSources'));

@@ -20,6 +20,25 @@ test('group name and source from file name', () => {
   assert.equal(sourceForGroup('JB TRR Rent 1 Listing Group'), 'TRR Group');
 });
 
+test('group → source: EAG Listing / TRR Groups / Co Agency (owner\'s list)', () => {
+  const expect = {
+    'EAG Listing': ['EAG 卓越 Sale Listing 🏡🚀💰'],
+    'TRR Group': [
+      'Topsales listing group(Only For Sales)', 'JB TRR Rent 1 Listing Group 💯', 'JB TRR 吹水站(Only For Sale)',
+      'JB TRR 吹水站 3(Only For Sale)', 'TRR JB Sharing Group', 'TMS + EAG Listing', 'EAT Cobroke Group',
+      'TPG + EAG listing group', 'TAG + EAG Listing Group', 'Victor Land Group 地皮买卖群🌳🌴', 'TRR GV Land Group',
+    ],
+    'Co Agency': [
+      'Factory 工厂 For Sale & Rent Cobroke Group', 'JOHOR Factory Shop Land', 'JB Property｜BuySaleRent Listing CoBroke Stock📈',
+      'Com Gao Gao AAA Group', '全马房地产(出租)', '全马房地产(买卖)', 'For Sale 卖货 Tank Group', 'Prosper CoSharing Space🏘️🏭',
+      'Rent 佞家 Group', 'Sky Ang co-broke stocks', 'Some brand new group',
+    ],
+  };
+  for (const [source, groups] of Object.entries(expect)) for (const g of groups) assert.equal(sourceForGroup(g), source, g);
+  // admin override wins
+  assert.equal(sourceForGroup('Sky Ang co-broke stocks', { 'sky ang co-broke stocks': 'TRR Group' }), 'TRR Group');
+});
+
 test('Android and iPhone formats, multi-line messages, system lines skipped', () => {
   const a = parseChatText(androidExport([['Ali', 'line one\nline two'], ['Bob', 'hello there']]));
   assert.equal(a.length, 2);
