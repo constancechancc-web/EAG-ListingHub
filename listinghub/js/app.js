@@ -771,10 +771,10 @@ async function viewImport(v) {
   v.innerHTML = `
     <section class="panel">
       <h2>Import WhatsApp chat 导入 WhatsApp 聊天</h2>
-      <p class="small muted">WhatsApp → group → Export chat → <b>Without Media</b>. Pick the .zip or .txt below (iCloud / Files works).<br>
-      WhatsApp → 群组 → 导出聊天 → 选择<b>不含媒体</b>，然后在这里选择 .zip 或 .txt 文件。</p>
+      <p class="small muted">WhatsApp → group → Export chat → <b>Without Media</b>. Pick the .zip or .txt below — you can select <b>many files at once</b> (iCloud / Files works).<br>
+      WhatsApp → 群组 → 导出聊天 → 选择<b>不含媒体</b>，然后在这里选择 .zip 或 .txt 文件（可以一次选很多个）。</p>
       <div class="drop">
-        <input type="file" data-file="chat" id="chatFile">
+        <input type="file" data-file="chat" id="chatFile" multiple>
         <p class="small muted" style="margin:8px 0 0">Only messages from the last ${RETENTION_DAYS} days are kept. 只保留最近 ${RETENTION_DAYS} 天的讯息。</p>
       </div>
       ${aiPossible ? `<label class="row small" style="margin-top:10px"><input type="checkbox" id="useAI"> Use AI only for unclear messages 只对看不懂的讯息使用 AI（会产生少量费用）</label>` : ''}
@@ -808,67 +808,88 @@ function setImp(html) { const el = $('#impStatus'); if (el) el.innerHTML = html;
 function progressHTML(pct, label) { return `<div class="progress"><i style="width:${Math.round(pct * 100)}%"></i></div><p class="small muted">${esc(label)}</p>`; }
 
 fileHandlers.chat = async (input) => {
-  const file = input.files && input.files[0];
-  if (!file) return;
+  const files = [...(input.files || [])];
+  if (!files.length) return;
   const useAI = !!($('#useAI') && $('#useAI').checked);
   input.disabled = true;
-  setImp(progressHTML(0.02, 'Reading file 读取文件…'));
+  const done = []; // one line per finished file
+  let label = '';
+  const logHTML = () => (done.length ? `<table class="simple" style="margin-top:6px">${done.map((d) => d.error
+    ? `<tr><td>${esc(d.name)}</td><td class="err" colspan="3">${esc(d.error)}</td></tr>`
+    : `<tr><td>${esc(d.name)}<div class="muted small">${esc(d.source)}</div></td><td>+${d.listings.toLocaleString()} listings</td><td>+${d.requests.toLocaleString()} WTB/WTR</td><td class="muted small">${d.merged.toLocaleString()} re-posts merged</td></tr>`).join('')}</table>` : '');
+  const show = (pct, text) => setImp(`${files.length > 1 ? `<p class="small"><b>File ${done.length + 1} / ${files.length}</b> · ${esc(label)}</p>` : ''}${progressHTML(pct, text)}${logHTML()}`);
+  show(0.02, 'Reading file 读取文件…');
   const worker = new Worker(new URL('./import-worker.js', import.meta.url), { type: 'module' });
   const call = (msg, transfer) => new Promise((resolve, reject) => {
     worker.onmessage = (e) => {
       const d = e.data;
-      if (d.type === 'progress') setImp(progressHTML(d.pct, { read: 'Reading 读取…', parse: 'Parsing messages 解析讯息…', classify: 'Sorting listings & requests 分类中…' }[d.stage]));
+      if (d.type === 'progress') show(d.pct, { read: 'Reading 读取…', parse: 'Parsing messages 解析讯息…', classify: 'Sorting listings & requests 分类中…' }[d.stage]);
       else if (d.type === 'error') reject(new Error(d.error));
       else resolve(d);
     };
     worker.onerror = (e) => reject(new Error(e.message || 'Worker error'));
     worker.postMessage(msg, transfer || []);
   });
-  try {
-    const buffer = await file.arrayBuffer();
-    const parsed = await call({ cmd: 'parse', buffer, name: file.name, fromDay: fromDay() }, [buffer]);
-    setImp(progressHTML(0.58, 'Checking duplicates 检查重复…'));
-    const seen = await S.store.seenFor(parsed.days);
-    let { res } = await call({ cmd: 'process', seen: [...seen] });
-    if (useAI && res.review.length) {
-      setImp(progressHTML(0.8, `Asking AI about ${res.review.length} unclear messages 让 AI 判断…`));
-      const hints = await aiHints(res.review);
-      if (hints.length) ({ res } = await call({ cmd: 'process', seen: [...seen], hints }));
+  // everything already on screen, by id, so new items are added and re-posts replace older copies
+  const L = new Map(S.listings.map((x) => [x.id, x]));
+  const R = new Map(S.requests.map((x) => [x.id, x]));
+  const T = { listings: 0, requests: 0, merged: 0, dupes: 0, review: 0, tooOld: 0, messages: 0, failed: 0 };
+  const reviewAll = [];
+  for (const file of files) {
+    label = file.name;
+    try {
+      const buffer = await file.arrayBuffer();
+      const parsed = await call({ cmd: 'parse', buffer, name: file.name, fromDay: fromDay() }, [buffer]);
+      show(0.58, 'Checking duplicates 检查重复…');
+      const seen = await S.store.seenFor(parsed.days);
+      let { res } = await call({ cmd: 'process', seen: [...seen] });
+      if (useAI && res.review.length) {
+        show(0.8, `Asking AI about ${res.review.length} unclear messages 让 AI 判断…`);
+        const hints = await aiHints(res.review);
+        if (hints.length) ({ res } = await call({ cmd: 'process', seen: [...seen], hints }));
+      }
+      show(0.92, `Saving 保存中… (${(res.listings.length + res.requests.length).toLocaleString()} items)`);
+      const added = await S.store.saveImport(res);
+      for (const l of res.listings) { const cur = L.get(l.id); if (!cur || (l.postedAt || '') > (cur.postedAt || '')) L.set(l.id, l); }
+      for (const r of res.requests) { const cur = R.get(r.id); if (!cur) R.set(r.id, r); else if ((r.postedAt || '') > (cur.postedAt || '')) R.set(r.id, { ...r, status: cur.status || r.status }); }
+      const merged = res.merged + (res.listings.length - added.listings) + (res.requests.length - added.requests);
+      T.listings += added.listings; T.requests += added.requests; T.merged += merged; T.dupes += res.duplicates; T.review += res.review.length;
+      T.tooOld += parsed.tooOld; T.messages += parsed.total;
+      reviewAll.push(...res.review);
+      done.push({ name: parsed.group, source: sourceForGroup(parsed.group, S.groupMap), listings: added.listings, requests: added.requests, merged });
+    } catch (e) {
+      T.failed++;
+      const msg = {
+        NOT_WHATSAPP: 'Not a WhatsApp chat export 不是 WhatsApp 聊天导出文件',
+        NO_TXT_IN_ZIP: 'No chat text (.txt) inside this zip 这个 zip 里没有聊天 .txt',
+        BAD_FILE: 'Could not read this file 无法读取这个文件',
+      }[e.message] || e.message;
+      done.push({ name: file.name, error: msg });
     }
-    setImp(progressHTML(0.92, 'Saving 保存中…'));
-    const added = await S.store.saveImport(res);
-    // update memory
-    const have = new Set(S.listings.map((l) => l.id));
-    for (const l of res.listings) if (!have.has(l.id)) S.listings.push(prepareListing(l));
-    const haveR = new Set(S.requests.map((r) => r.id));
-    for (const r of res.requests) if (!haveR.has(r.id)) S.requests.push(r);
-    applySources();
-    if (added.listings || added.requests) S.lastUpdated = new Date().toISOString();
-    dataChanged();
-    const dupes = res.duplicates + (res.listings.length - added.listings) + (res.requests.length - added.requests);
-    setImp(`
-      <p class="ok">Done 完成 · ${esc(parsed.group)} (${esc(sourceForGroup(parsed.group, S.groupMap))})</p>
-      <div class="stats">
-        <div class="stat"><b>${added.listings}</b>New listings 新房源</div>
-        <div class="stat"><b>${added.requests}</b>New WTB/WTR 新需求</div>
-        <div class="stat"><b>${dupes}</b>Skipped duplicates 重复跳过</div>
-        <div class="stat"><b>${res.review.length}</b>Need review 需要检查</div>
-      </div>
-      <p class="small muted">${parsed.total.toLocaleString()} messages in file · ${parsed.tooOld.toLocaleString()} older than ${RETENTION_DAYS} days skipped · ${res.ignored.toLocaleString()} chit-chat ignored</p>
-      ${res.review.length ? `<details class="raw"><summary>Messages that need review 需要检查的讯息 (${res.review.length})</summary>
-        ${res.review.slice(0, 100).map((r) => `<pre><b>${esc(r.renName)}</b> · ${esc(r.reason)}\n${esc(r.raw)}</pre>`).join('')}</details>` : ''}`);
-  } catch (e) {
-    const msg = {
-      NOT_WHATSAPP: "This file is not a WhatsApp chat export. 这不是 WhatsApp 聊天导出文件。",
-      NO_TXT_IN_ZIP: 'No chat text (.txt) inside this zip. 这个 zip 里没有聊天 .txt 文件。',
-      BAD_FILE: 'Could not read this file. 无法读取这个文件。',
-    }[e.message] || e.message;
-    setImp(`<p class="err">${esc(msg)}</p><p class="small muted">Tip: WhatsApp → Export chat → Without Media 不含媒体</p>`);
-  } finally {
-    worker.terminate();
-    input.disabled = false;
-    input.value = '';
   }
+  worker.terminate();
+  // update the screen once, at the end (rebuilding the area list for 20,000+ listings takes a moment)
+  S.listings = [...L.values()].map(prepareListing);
+  S.requests = [...R.values()];
+  applySources();
+  if (T.listings || T.requests || T.merged) S.lastUpdated = new Date().toISOString();
+  dataChanged();
+  setImp(`
+    <p class="${T.failed ? 'err' : 'ok'}">${T.failed ? `Finished with ${T.failed} problem(s) 完成，但有 ${T.failed} 个问题` : 'Done 完成'} · ${files.length} file(s) 个文件</p>
+    <div class="stats">
+      <div class="stat"><b>${T.listings.toLocaleString()}</b>New listings 新房源</div>
+      <div class="stat"><b>${T.requests.toLocaleString()}</b>New WTB/WTR 新需求</div>
+      <div class="stat"><b>${T.merged.toLocaleString()}</b>Re-posts merged 重复贴文合并</div>
+      <div class="stat"><b>${T.review.toLocaleString()}</b>Need review 需要检查</div>
+    </div>
+    <p class="small muted">${T.messages.toLocaleString()} messages in the file(s) · ${T.tooOld.toLocaleString()} older than ${RETENTION_DAYS} days skipped · ${T.dupes.toLocaleString()} identical messages skipped.<br>
+    Re-posts = the same agent posting the same text again; only the newest is kept. 同一位经纪重复贴同样内容，只保留最新的一条。</p>
+    ${logHTML()}
+    ${reviewAll.length ? `<details class="raw"><summary>Messages that need review 需要检查的讯息 (${reviewAll.length})</summary>
+      ${reviewAll.slice(0, 100).map((r) => `<pre><b>${esc(r.renName)}</b> · ${esc(r.reason)}\n${esc(r.raw)}</pre>`).join('')}</details>` : ''}
+    ${T.failed ? '<p class="small muted">Tip: WhatsApp → Export chat → Without Media 不含媒体</p>' : ''}`);
+  input.disabled = false;
+  input.value = '';
 };
 
 /** Send ONLY the message text (phone numbers removed) of unclear messages to the server-side AI helper. */

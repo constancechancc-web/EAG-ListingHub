@@ -1,6 +1,28 @@
 // Shared import pipeline: messages → de-duplicated listings/requests grouped in day-packs.
 import { parseMessage } from './parse.js';
 import { groupFromFileName, sourceForGroup } from './whatsapp.js';
+import { hash53, norm } from './text.js';
+
+/**
+ * Re-post key: the same agent posting the same text again (every day, in many groups) is ONE listing.
+ * The item id is this key, so a later re-post updates the same row instead of adding a new one.
+ */
+export function repostId(item) {
+  const who = item.renPhone || norm(item.renName);
+  const text = norm(item.raw).replace(/[^a-z0-9㐀-鿿]+/g, ' ').trim();
+  return hash53('rp|' + who + '|' + text);
+}
+
+/** Keep only the newest copy of each re-post. Returns { items, merged }. */
+function mergeReposts(items) {
+  const m = new Map();
+  for (const it of items) {
+    it.id = repostId(it);
+    const cur = m.get(it.id);
+    if (!cur || it.postedAt > cur.postedAt) m.set(it.id, it);
+  }
+  return { items: [...m.values()], merged: items.length - m.size };
+}
 
 /**
  * @param messages  parsed chat messages
@@ -12,7 +34,7 @@ export function processMessages(messages, opts = {}) {
   const source = sourceForGroup(group);
   const seen = opts.seen || new Set();
   const hints = opts.hints || new Map();
-  const res = { listings: [], requests: [], review: [], ignored: 0, duplicates: 0, group, source, newHashes: [] };
+  const res = { listings: [], requests: [], review: [], ignored: 0, duplicates: 0, merged: 0, group, source, newHashes: [] };
   const local = new Set();
   messages.forEach((msg, i) => {
     if (seen.has(msg.hash) || local.has(msg.hash)) { res.duplicates++; return; }
@@ -25,6 +47,10 @@ export function processMessages(messages, opts = {}) {
     res.newHashes.push({ hash: msg.hash, day: msg.day });
     if (opts.onProgress && i % 500 === 0) opts.onProgress(i / messages.length);
   });
+  const L = mergeReposts(res.listings), R = mergeReposts(res.requests);
+  res.listings = L.items;
+  res.requests = R.items;
+  res.merged = L.merged + R.merged; // same agent + same text re-posted → counted once
   return res;
 }
 

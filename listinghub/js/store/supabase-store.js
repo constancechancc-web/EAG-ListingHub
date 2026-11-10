@@ -15,15 +15,29 @@ export function createSupabaseStore() {
 
   const check = ({ data, error }) => { if (error) throw new Error(error.message); return data; };
 
+  /** All rows of a table. The first page also returns the total, then the rest load 5 pages at a time. */
   async function selectAll(table, columns, filter) {
-    const out = [];
-    for (let from = 0; ; from += PAGE) {
-      let q = sb.from(table).select(columns).order(table === 'seen' ? 'hash' : table === 'app_users' ? 'email' : 'id').range(from, from + PAGE - 1);
+    const order = table === 'seen' ? 'hash' : table === 'app_users' ? 'email' : 'id';
+    const page = (from, withCount) => {
+      let q = sb.from(table).select(columns, withCount ? { count: 'exact' } : undefined).order(order).range(from, from + PAGE - 1);
       if (filter) q = filter(q);
-      const rows = check(await q);
-      out.push(...rows);
-      if (rows.length < PAGE) return out;
+      return q;
+    };
+    const first = await page(0, true);
+    const firstRows = check(first);
+    if (firstRows.length < PAGE) return firstRows;
+    const pages = first.count != null ? Math.ceil(first.count / PAGE) : null;
+    if (pages == null) { // total unknown → one page after the other
+      const out = [...firstRows];
+      for (let from = PAGE; ; from += PAGE) { const rows = check(await page(from)); out.push(...rows); if (rows.length < PAGE) return out; }
     }
+    const results = new Array(pages);
+    results[0] = firstRows;
+    let next = 1;
+    await Promise.all(Array.from({ length: Math.min(5, pages - 1) }, async () => {
+      while (next < pages) { const p = next++; results[p] = check(await page(p * PAGE)); }
+    }));
+    return results.flat();
   }
 
   const toRow = (prefix, it) => {
@@ -33,6 +47,16 @@ export function createSupabaseStore() {
     return row;
   };
   const fromRow = (r) => (r.status ? { ...r.data, status: r.status } : r.data);
+
+  /** Add new items; a re-post (same id) replaces the old copy only if it is newer. Done by the database function import_items(). */
+  async function importItems(table, items, prefix) {
+    let added = 0, bumped = 0;
+    for (let i = 0; i < items.length; i += 300) {
+      const out = check(await sb.rpc('import_items', { p_table: table, p_rows: items.slice(i, i + 300).map((x) => toRow(prefix, x)) }));
+      added += out.added; bumped += out.bumped;
+    }
+    return { added, bumped };
+  }
 
   /** Insert, skipping anything already there (ON CONFLICT DO NOTHING). Returns how many were new. */
   async function insertNew(table, rows, key = 'id', returning = true) {
@@ -85,12 +109,10 @@ export function createSupabaseStore() {
     },
 
     async saveImport({ listings, requests, newHashes }) {
-      const added = {
-        listings: await insertNew('listings', listings.map((x) => toRow('L', x))),
-        requests: await insertNew('requests', requests.map((x) => toRow('R', x))),
-      };
+      const L = await importItems('listings', listings, 'L');
+      const R = await importItems('requests', requests, 'R');
       if (newHashes.length) await insertNew('seen', newHashes.map(({ hash, day }) => ({ hash, day })), 'hash', false);
-      return added;
+      return { listings: L.added, requests: R.added, bumpedListings: L.bumped, bumpedRequests: R.bumped };
     },
 
     async updateRequest(item, patch) {
@@ -137,6 +159,8 @@ export function createSupabaseStore() {
 
     /** Time the newest listing or request was added (by any import, manual or scheduled). */
     async lastUpdated() {
+      const m = await this.getMeta('lastImport');
+      if (m && m.at) return m.at;
       const newest = async (t) => {
         const rows = check(await sb.from(t).select('created_at').order('created_at', { ascending: false }).limit(1));
         return rows && rows[0] ? rows[0].created_at : null;

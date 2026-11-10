@@ -63,11 +63,25 @@ export function createLocalStore() {
     },
     async saveImport({ listings, requests, newHashes }) {
       const strip = (o) => JSON.parse(JSON.stringify(o));
-      const l = await putMany('L', listings.map(strip));
-      const r = await putMany('R', requests.map(strip));
+      // new items are added; a re-post (same id) replaces the old copy only if it is newer
+      const merge = async (store, items) => {
+        const tx = (await dbP).transaction(store, 'readwrite');
+        const os = tx.objectStore(store);
+        let added = 0, bumped = 0;
+        for (const raw of items) {
+          const it = strip(raw);
+          const cur = await reqP(os.get(it.id));
+          if (!cur) { os.put(it); added++; }
+          else if ((it.postedAt || '') > (cur.postedAt || '')) { os.put({ ...it, ...(cur.status ? { status: cur.status } : {}) }); bumped++; }
+        }
+        await done(tx);
+        return { added, bumped };
+      };
+      const l = await merge('L', listings);
+      const r = await merge('R', requests);
       if (newHashes.length) await putMany('seen', newHashes);
-      if (l || r) await this.setMeta('lastImport', { at: new Date().toISOString() });
-      return { listings: l, requests: r };
+      if (l.added || r.added || l.bumped || r.bumped) await this.setMeta('lastImport', { at: new Date().toISOString() });
+      return { listings: l.added, requests: r.added, bumpedListings: l.bumped, bumpedRequests: r.bumped };
     },
     async lastUpdated() {
       const m = await this.getMeta('lastImport');

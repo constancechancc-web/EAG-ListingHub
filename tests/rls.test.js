@@ -95,3 +95,33 @@ test('users can only see their own allowlist row; driveState stays server-only',
   assert.ok((await rows(OWNER, 'select email from app_users')).length >= 2);
   assert.deepEqual((await rows('viewer@gmail.com', 'select id from meta order by id')).map((r) => r.id), ['branding', 'groupSources', 'importLog']);
 });
+
+test('import_items: viewers and strangers are refused; editors can import; a newer re-post replaces, an older one does not', async () => {
+  const row = (id, at, extra = {}) => ({ id, day: at.slice(0, 10), posted_at: at, data: { id, title: 'Taman X', ...extra } });
+  const call = (who, table, rows) => rows_(who, `select import_items('${table}', '${JSON.stringify(rows).replace(/'/g, "''")}'::jsonb) as r`);
+  const rows_ = async (who, sql) => (await as(who, sql)).rows;
+  await assert.rejects(call('viewer@gmail.com', 'listings', [row('A', '2026-11-01T10:00:00+08:00')]), /not allowed/);
+  await assert.rejects(call('stranger@gmail.com', 'listings', [row('A', '2026-11-01T10:00:00+08:00')]), /not allowed/);
+  const r1 = (await call('editor@gmail.com', 'listings', [row('A', '2026-11-01T10:00:00+08:00', { v: 1 }), row('B', '2026-11-01T11:00:00+08:00')]))[0].r;
+  assert.deepEqual(r1, { added: 2, bumped: 0 });
+  // newer re-post → replaces; older re-post → ignored
+  const r2 = (await call('editor@gmail.com', 'listings', [row('A', '2026-11-05T10:00:00+08:00', { v: 2 })]))[0].r;
+  assert.deepEqual(r2, { added: 0, bumped: 1 });
+  const r3 = (await call('editor@gmail.com', 'listings', [row('A', '2026-11-02T10:00:00+08:00', { v: 3 })]))[0].r;
+  assert.deepEqual(r3, { added: 0, bumped: 0 });
+  const a = (await rows(OWNER, `select data->>'v' as v, day from listings where id = 'A'`))[0];
+  assert.equal(a.v, '2'); assert.equal(a.day, '2026-11-05');
+  // duplicates inside one batch are fine (newest wins)
+  const r4 = (await call('editor@gmail.com', 'listings', [row('C', '2026-11-01T10:00:00+08:00'), row('C', '2026-11-03T10:00:00+08:00', { v: 9 })]))[0].r;
+  assert.deepEqual(r4, { added: 1, bumped: 0 });
+  // requests keep their status (closed by the admin) when re-posted
+  await call('editor@gmail.com', 'requests', [row('Q', '2026-11-01T10:00:00+08:00')]);
+  await as(OWNER, `update requests set status = 'closed' where id = 'Q'`);
+  await call('editor@gmail.com', 'requests', [row('Q', '2026-11-06T10:00:00+08:00')]);
+  assert.equal((await rows(OWNER, `select status, day from requests where id = 'Q'`))[0].status, 'closed');
+  // "last import" time is recorded and readable by viewers
+  assert.ok((await rows('viewer@gmail.com', `select data->>'at' as at from meta where id = 'lastImport'`))[0].at);
+  // the editor still cannot touch rows directly
+  assert.equal((await as('editor@gmail.com', `update listings set data = '{}' where id = 'A'`)).affectedRows, 0);
+  assert.equal((await as('editor@gmail.com', `delete from listings where id = 'A'`)).affectedRows, 0);
+});

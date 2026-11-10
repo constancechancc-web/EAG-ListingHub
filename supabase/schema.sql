@@ -124,3 +124,65 @@ drop policy if exists "meta change" on public.meta;
 create policy "meta read"   on public.meta for select to authenticated using (public.app_role() in ('admin', 'editor', 'viewer') and id <> 'driveState');
 create policy "meta add"    on public.meta for insert to authenticated with check (public.app_role() = 'admin' and id in ('branding', 'groupSources'));
 create policy "meta change" on public.meta for update to authenticated using (public.app_role() = 'admin' and id in ('branding', 'groupSources')) with check (public.app_role() = 'admin' and id in ('branding', 'groupSources'));
+
+-- ── import: new items are added; a RE-POST (same id) only replaces the old copy when it is NEWER ──
+-- Editors may only import through this function (they still cannot update or delete rows directly).
+-- It also records the time of the last import for the "Updated" tile.
+create or replace function public.import_items(p_table text, p_rows jsonb)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  n_added int := 0;
+  n_bumped int := 0;
+begin
+  if not (public.app_role() in ('admin', 'editor') or coalesce(auth.jwt() ->> 'role', '') = 'service_role') then
+    raise exception 'not allowed' using errcode = '42501';
+  end if;
+
+  if p_table = 'listings' then
+    with incoming as (
+      select distinct on (x.id) x.id, x.day, x.posted_at, x.data
+      from jsonb_to_recordset(p_rows) as x(id text, day text, posted_at timestamptz, data jsonb)
+      order by x.id, x.posted_at desc
+    ), up as (
+      insert into public.listings as t (id, day, posted_at, data)
+      select id, day, posted_at, data from incoming
+      on conflict (id) do update
+        set day = excluded.day, posted_at = excluded.posted_at, data = excluded.data
+        where excluded.posted_at > coalesce(t.posted_at, '-infinity'::timestamptz)
+      returning (xmax = 0) as inserted
+    )
+    select count(*) filter (where inserted), count(*) filter (where not inserted) into n_added, n_bumped from up;
+
+  elsif p_table = 'requests' then
+    with incoming as (
+      select distinct on (x.id) x.id, x.day, x.posted_at, x.data
+      from jsonb_to_recordset(p_rows) as x(id text, day text, posted_at timestamptz, data jsonb)
+      order by x.id, x.posted_at desc
+    ), up as (
+      insert into public.requests as t (id, day, posted_at, data)
+      select id, day, posted_at, data from incoming
+      on conflict (id) do update
+        set day = excluded.day, posted_at = excluded.posted_at, data = excluded.data   -- status (open/closed) is kept
+        where excluded.posted_at > coalesce(t.posted_at, '-infinity'::timestamptz)
+      returning (xmax = 0) as inserted
+    )
+    select count(*) filter (where inserted), count(*) filter (where not inserted) into n_added, n_bumped from up;
+
+  else
+    raise exception 'unknown table %', p_table;
+  end if;
+
+  if n_added + n_bumped > 0 then
+    insert into public.meta (id, data, updated_at) values ('lastImport', jsonb_build_object('at', now()), now())
+    on conflict (id) do update set data = excluded.data, updated_at = excluded.updated_at;
+  end if;
+  return jsonb_build_object('added', n_added, 'bumped', n_bumped);
+end
+$$;
+revoke all on function public.import_items(text, jsonb) from public, anon;
+grant execute on function public.import_items(text, jsonb) to authenticated;
+do $$ begin
+  if exists (select 1 from pg_roles where rolname = 'service_role') then
+    grant execute on function public.import_items(text, jsonb) to service_role;
+  end if;
+end $$;

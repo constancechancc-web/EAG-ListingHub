@@ -52,3 +52,23 @@ test('large file parses quickly (20MB-class)', () => {
   assert.equal(res.listings.length, 40000);
   assert.ok(ms < 30000, 'took ' + ms + 'ms');
 });
+
+test('re-posts: same agent + same text = one listing (newest kept); other agent / other text stays separate', () => {
+  const post = 'FOR RENT\nSutera Utama ground floor shop\nRental RM 4,500\n0123456780';
+  const day = (d, t) => `${d}, ${t} - `;
+  const text = [
+    `${day('01/11/2026', '09:00')}Cindy: ${post}`,
+    `${day('02/11/2026', '09:30')}Cindy: ${post}`,
+    `${day('05/11/2026', '10:15')}Cindy: ${post.toUpperCase()} `,   // same text, different case / spacing
+    `${day('05/11/2026', '10:20')}Cindy: ${post.replace('4,500', '4,200')}`, // price changed → a different listing
+    `${day('05/11/2026', '10:25')}Bob: ${post.replace('0123456780', '0129990000')}`, // another agent
+  ].join('\n');
+  const res = processMessages(parseChatText(text), { fileName: 'WhatsApp Chat - Test.txt' });
+  assert.equal(res.listings.length, 3);
+  assert.equal(res.merged, 2);
+  const cindy = res.listings.find((l) => l.renName === 'Cindy' && l.price === 4500);
+  assert.ok(cindy.postedAt.startsWith('2026-11-05T10:15'), 'newest copy kept: ' + cindy.postedAt);
+  // the id does not depend on the message time, so the same listing re-posted in a later import has the same id
+  const later = processMessages(parseChatText(`${day('09/11/2026', '08:00')}Cindy: ${post}`), { fileName: 'x.txt' });
+  assert.equal(later.listings[0].id, cindy.id);
+});

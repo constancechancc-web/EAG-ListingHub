@@ -67,13 +67,21 @@ const toRow = (prefix, it) => {
   return row;
 };
 
+// New items are added; a re-post (same id) replaces the old copy only if it is newer (database function import_items).
+async function importItems(table, items, prefix) {
+  let added = 0, bumped = 0;
+  for (let i = 0; i < items.length; i += 300) {
+    const out = check(await db().rpc('import_items', { p_table: table, p_rows: items.slice(i, i + 300).map((x) => toRow(prefix, x)) }));
+    added += out.added; bumped += out.bumped;
+  }
+  return { added, bumped };
+}
+
 async function save(res) {
-  const added = {
-    listings: await insertNew('listings', res.listings.map((x) => toRow('L', x))),
-    requests: await insertNew('requests', res.requests.map((x) => toRow('R', x))),
-  };
+  const L = await importItems('listings', res.listings, 'L');
+  const R = await importItems('requests', res.requests, 'R');
   if (res.newHashes.length) await insertNew('seen', res.newHashes.map(({ hash, day }) => ({ hash, day })), 'hash', false);
-  return added;
+  return { listings: L.added, requests: R.added, bumped: L.bumped + R.bumped };
 }
 
 const getMeta = async (id) => { const r = check(await db().from('meta').select('data').eq('id', id).limit(1)); return r && r[0] ? r[0].data : null; };
