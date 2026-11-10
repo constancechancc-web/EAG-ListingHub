@@ -92,9 +92,9 @@ GitHub 仓库：https://github.com/constancechancc-web/EAG-ListingHub
 ## 三、上线步骤（按顺序）
 
 1. 打开网址 → 用你的 Gmail 登录（= Admin）。
-2. **备份 Backup** → 先按 **Download backup 下载备份**（以后每次删除前都要先备份）。
+2. **后台 Backend** → 先按 **Download backup 下载备份**（以后每次删除前都要先备份）。
 3. **导入房源 Import** → 上传一两个群组的聊天导出，检查房源和需求对不对。
-4. **备份 Backup → Users 用户权限** → 先只加 **一位 Viewer** 经纪，请他用手机试用。
+4. **后台 Backend → Users 用户权限** → 先只加 **一位 Viewer** 经纪，请他用手机试用。
 5. 没问题之后，才加入其他经纪（Viewer）和帮你导入的同事（Editor）。
 
 ---
@@ -113,7 +113,7 @@ GitHub 仓库：https://github.com/constancechancc-web/EAG-ListingHub
 
 **配对规则（严格）：** 同买/同租、类型完全一样、需求要有明确地区、价钱在预算范围内（租 ±RM2,000；买 ±RM50,000）、房间/厕所/银行估价达到要求。分数 50 以上才显示。
 
-**封面和标志：** 封面图在 `listinghub/assets/CoverPhoto.png`，标志在 `listinghub/assets/EAG LOGO.jpg`。网站用的是缩小后的版本（`hero-bg.jpg`、`eag-logo.png`、`icon-*.png`）。Admin 也可以在 **备份 Backup → App logo** 直接换标志。
+**封面和标志：** 封面图在 `listinghub/assets/CoverPhoto.png`，标志在 `listinghub/assets/EAG LOGO.jpg`。网站用的是缩小后的版本（`hero-bg.jpg`、`eag-logo.png`、`icon-*.png`）。Admin 也可以在 **后台 Backend → App logo** 直接换标志。
 
 ---
 

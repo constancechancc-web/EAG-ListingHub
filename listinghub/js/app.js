@@ -228,7 +228,7 @@ function tabsFor(role) {
     import: '导入房源 Import',
     requests: '买租需求 WTB/WTR',
     match: '智能配对 Match',
-    backup: '备份 Backup',
+    backup: '后台 Backend',
   };
   const ids = role === 'admin' ? ['search', 'import', 'requests', 'match', 'backup'] : role === 'editor' ? ['search', 'import', 'match'] : ['search', 'match'];
   return ids.map((id) => ({ id, label: all[id] }));
