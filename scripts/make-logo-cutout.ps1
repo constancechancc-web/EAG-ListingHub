@@ -1,12 +1,15 @@
-# Makes the transparent EAG icons from 'listinghub/assets/EAG LOGO.jpg'.
-# Run: $env:SAT=10; $env:WARM=8; $env:GAP=4; powershell -File scripts/make-logo-cutout.ps1 -dir listinghub/assets
+# Makes the transparent EAG favicon and app icons from a logo picture in listinghub/assets.
+# Current icons (Glossy emblem, checkerboard painted in the picture):
+#   $env:SRC='Glossy E.A.G. Interlocking Emblem.png'; $env:SAT=14; $env:WARM=10; $env:GAP=0; $env:LUMMIN=185
+#   powershell -File scripts/make-logo-cutout.ps1 -dir listinghub/assets
+# Older dark-square logo: $env:SRC='EAG LOGO.jpg'; SAT=10; WARM=8; GAP=4; LUMMIN=0
 param([string]$dir)
 Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @"
 using System; using System.Drawing; using System.Drawing.Imaging; using System.Collections.Generic; using System.Runtime.InteropServices;
 public static class Cut {
   // Remove the dark grey square: flood-fill from the border through dark, low-colour pixels.
   // A disc in the middle is protected so the dark centre with the infinity sign and E.A.G stays.
-  public static Bitmap Run(string path, int satCut, int warmCut, int gapR) {
+  public static Bitmap Run(string path, int satCut, int warmCut, int gapR, int lumMin) {
     var src = new Bitmap(path);
     int w = src.Width, h = src.Height;
     var bmp = new Bitmap(w, h, PixelFormat.Format32bppArgb);
@@ -20,7 +23,7 @@ public static class Cut {
     for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
       int i = y*stride + x*4; int b = px[i], g = px[i+1], r = px[i+2];
       int mx = Math.Max(r, Math.Max(g, b)), mn = Math.Min(r, Math.Min(g, b));
-      grey[y*w+x] = (mx - mn) < satCut && (r - b) < warmCut;
+      grey[y*w+x] = (mx - mn) < satCut && (r - b) < warmCut && (0.299*r + 0.587*g + 0.114*b) >= lumMin;
     }
     // "wide" grey: a whole (2R+1)^2 box is grey -> the fill cannot squeeze through thin gaps into the centre
     var integ = new int[(w+1)*(h+1)];
@@ -58,7 +61,8 @@ public static class Cut {
   }
 }
 "@
-$cut = [Cut]::Run("$dir\EAG LOGO.jpg", [int]$env:SAT, [int]$env:WARM, [int]$env:GAP)
+$srcName = if ($env:SRC) { $env:SRC } else { "EAG LOGO.jpg" }
+$cut = [Cut]::Run("$dir\$srcName", [int]$env:SAT, [int]$env:WARM, [int]$env:GAP, [int]$env:LUMMIN)
 $r = [Cut]::Bounds($cut)
 $side = [Math]::Max($r.Width, $r.Height)
 function Save-Icon($size, $pad, $bg, $path) {

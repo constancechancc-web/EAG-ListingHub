@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const out = path.join(root, 'public');
-const SKIP = new Set(['CoverPhoto.png', 'EAG LOGO.jpg']); // original design files; the app uses the resized copies
+const SKIP = new Set(['CoverPhoto.png', 'EAG LOGO.jpg', 'Glossy E.A.G. Interlocking Emblem.png', 'eag-logo-cutout.png']); // original design files; the app uses the resized copies
 
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });
