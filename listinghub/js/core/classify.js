@@ -279,7 +279,7 @@ export const FEATURES = [
   ['Renovated', /renovat|装修|ubahsuai/],
   ['Extended', /extend|扩建/],
   ['Non-bumi', /non\s*-?\s*bumi|\bnb\b lot|非土著/],
-  ['Bumi lot', /\bbumi lot|土著/],
+  ['Bumi lot', /(?<!non[\s-]?)(?<![a-z])bumi\s*lot|(?<!非)土著/],
   ['High floor', /high\s*floor|高楼层|高层/],
   ['Ground floor', /ground\s*floor|\bg\/f\b|底楼|楼下|一楼店/],
   ['First floor', /first\s*floor|1st\s*floor|楼上|二楼/],

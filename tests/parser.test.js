@@ -111,6 +111,15 @@ test('listing fields', () => {
   assert.equal(listing(L.johorLand).price, 3500000);
 });
 
+test('Bumi / Non-bumi lot are not confused, and are not a lot position', () => {
+  const f = (t) => listing('For sale\nTaman Test double storey terrace\n' + t + '\nPrice RM 500k').features;
+  assert.ok(f('Bumi lot').includes('Bumi lot') && !f('Bumi lot').includes('Non-bumi'));
+  assert.ok(f('Non-bumi lot').includes('Non-bumi') && !f('Non-bumi lot').includes('Bumi lot'));
+  assert.ok(f('non bumi lot').includes('Non-bumi') && !f('non bumi lot').includes('Bumi lot'));
+  assert.ok(f('非土著').includes('Non-bumi') && !f('非土著').includes('Bumi lot'));
+  assert.ok(f('Corner lot').includes('Corner lot'));
+});
+
 test('chit-chat and sold messages are ignored', () => {
   assert.equal(parseMessage(msg('Good morning all 🙏')).cls, 'ignore');
   assert.equal(parseMessage(msg('SOLD')).cls, 'ignore');

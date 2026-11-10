@@ -8,6 +8,7 @@ import { buildAreaVocab } from './core/areas.js';
 import { listingEnquiry, clientAgentMessage, waLink, listingSummary, bankValueDiff } from './core/messages.js';
 import { fmtRM, compilePhrase, fieldHas, prepField, digitsOnly, norm } from './core/text.js';
 import { analyseRequest } from './core/parse.js';
+import { detectFeatures } from './core/classify.js';
 
 // ───────────────────────── state ─────────────────────────
 const S = {
@@ -33,6 +34,7 @@ const S = {
   matchTotal: null, // number of match pairs (computed in the background)
 };
 const APP_VERSION = 'v2.0';
+const LOT_POSITIONS = [['Intermediate', 'Intermediate Lot'], ['End lot', 'End Lot'], ['Corner lot', 'Corner Lot']];
 const PAGE = 30;
 const pref = {
   get: (k, d = '') => { try { return localStorage.getItem('eag.' + k) ?? d; } catch { return d; } },
@@ -172,7 +174,8 @@ async function loadData() {
   const uniq = (arr) => { const m = new Map(); for (const x of arr) m.set(x.id, x); return [...m.values()]; };
   S.groupMap = (gs && gs.map) || {};
   S.lastUpdated = last;
-  S.listings = uniq(listings).map(prepareListing);
+  // features are re-read from the original post, so rule improvements also fix listings imported earlier
+  S.listings = uniq(listings).map((l) => { l.features = detectFeatures(l.raw || ''); return prepareListing(l); });
   S.requests = uniq(requests);
   applySources();
   dataChanged();
@@ -530,8 +533,9 @@ function listingCard(l, { showMatchBtn = true } = {}) {
     l.sqft && `Built-up 建筑 ${Math.round(l.sqft).toLocaleString()} sqft`,
   ].filter(Boolean).join(' · ');
   const room = [l.bed != null && `${l.bed} bed 房`, l.bath != null && `${l.bath} bath 厕`, l.storeys && `${l.storeys} storey 层`, l.tenure, l.furnishing].filter(Boolean).join(' · ');
-  const lot = (l.features || []).filter((x) => /lot|Intermediate/.test(x));
-  const feats = (l.features || []).filter((x) => !lot.includes(x));
+  // Lot position is only Intermediate / End / Corner. Bumi / Non-bumi are lot status, shown with the other features.
+  const lot = LOT_POSITIONS.filter(([k]) => (l.features || []).includes(k)).map(([, label]) => label);
+  const feats = (l.features || []).filter((x) => !LOT_POSITIONS.some(([k]) => k === x));
   return `
     <article class="card">
       <h4>${esc(l.title)}</h4>
