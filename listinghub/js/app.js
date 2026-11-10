@@ -931,7 +931,6 @@ async function viewBackup(v) {
     </section>
     <section class="panel">
       <h2>Users 用户权限</h2>
-      <div class="note small">Test with ONE Viewer first, before inviting other agents. 先邀请<b>一位</b> Viewer 测试，确认没问题再邀请其他经纪。</div>
       <div class="grid3" style="margin-top:10px">
         <label class="f" style="grid-column: span 2"><span>Gmail</span><input type="email" id="newEmail" placeholder="agent@gmail.com"></label>
         <label class="f"><span>Role 身份</span><select id="newRole"><option value="viewer">Viewer 经纪</option><option value="editor">Editor 编辑</option></select></label>
