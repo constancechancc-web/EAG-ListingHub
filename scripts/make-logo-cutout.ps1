@@ -1,5 +1,8 @@
 # Makes the transparent EAG favicon and app icons from a logo picture in listinghub/assets.
-# Current icons (Glossy emblem, checkerboard painted in the picture):
+# Current icons (Luxe Gold Skyline Logo on white):
+#   $env:SRC='Luxe Gold Skyline Logo.png'; $env:SAT=14; $env:WARM=10; $env:GAP=0; $env:LUMMIN=228; $env:APPLEPAD=0
+#   powershell -File scripts/make-logo-cutout.ps1 -dir listinghub/assets
+# Glossy emblem (checkerboard painted in the picture):
 #   $env:SRC='Glossy E.A.G. Interlocking Emblem.png'; $env:SAT=14; $env:WARM=10; $env:GAP=0; $env:LUMMIN=185
 #   powershell -File scripts/make-logo-cutout.ps1 -dir listinghub/assets
 # Older dark-square logo: $env:SRC='EAG LOGO.jpg'; SAT=10; WARM=8; GAP=4; LUMMIN=0
@@ -82,6 +85,7 @@ Save-Icon 32  0.0  $null "$dir\favicon-32.png"
 Save-Icon 192 0.04 $null "$dir\icon-192.png"
 Save-Icon 512 0.04 $null "$dir\icon-512.png"
 Save-Icon 512 0.16 $cream "$dir\icon-maskable-512.png"
-Save-Icon 180 0.08 $cream "$dir\apple-touch-icon.png"
+$applePad = if ($env:APPLEPAD) { [double]$env:APPLEPAD } else { 0.08 }
+Save-Icon 180 $applePad $cream "$dir\apple-touch-icon.png"
 $cut.Dispose()
 "crop $($r.X),$($r.Y) $($r.Width)x$($r.Height)"
