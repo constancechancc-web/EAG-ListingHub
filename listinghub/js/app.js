@@ -312,7 +312,7 @@ function statsHTML() {
         ${tile('hands', '配对 Matches', S.matchTotal != null ? S.matchTotal.toLocaleString() : '<span class="muted">…</span>', 'statMatches')}
         ${tile('refresh', '更新于 Updated', up ? `<span class="stat-date">${esc(fmtDate(up))}</span>` : '<span class="stat-date muted">—</span>')}
       </div>
-      <p class="stats-sub"><span class="mono">${APP_VERSION}${isTestSite() ? ' test' : ''}</span> · last ${RETENTION_DAYS} days 最近${RETENTION_DAYS}天${up ? ` · last update 最后更新 ${esc(fmtDate(up))} ${esc(fmtTime(up))}` : ''}</p>
+      <p class="stats-sub">${isTestSite() ? `<span class="mono">test</span> · ` : ""}Last ${RETENTION_DAYS} days 最近${RETENTION_DAYS}天${up ? ` · last update 最后更新 ${esc(fmtDate(up))} ${esc(fmtTime(up))}` : ""}</p>
     </section>`;
 }
 
