@@ -125,3 +125,14 @@ test('import_items: viewers and strangers are refused; editors can import; a new
   assert.equal((await as('editor@gmail.com', `update listings set data = '{}' where id = 'A'`)).affectedRows, 0);
   assert.equal((await as('editor@gmail.com', `delete from listings where id = 'A'`)).affectedRows, 0);
 });
+
+test('migration 2026-11-10 runs on an existing database and keeps every rule working', async () => {
+  await db.exec(fs.readFileSync(new URL('../supabase/migrations/2026-11-10-fast-policies.sql', import.meta.url), 'utf8'));
+  assert.equal((await rows('viewer@gmail.com', 'select app_role() r'))[0].r, 'viewer');
+  assert.ok((await count('viewer@gmail.com', 'listings')) > 0);
+  assert.equal(await count('stranger@gmail.com', 'listings'), 0);
+  await assert.rejects(as('viewer@gmail.com', `insert into listings (id, day, data) values ('Z9', '2026-11-09', '{}')`), /row-level security/);
+  // the role check is evaluated once, not per row
+  const pol = (await rows(OWNER, `select qual from pg_policies where tablename = 'listings' and policyname = 'listings read'`))[0].qual;
+  assert.match(pol, /SELECT app_role\(\)/i);
+});
