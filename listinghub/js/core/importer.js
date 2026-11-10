@@ -1,7 +1,7 @@
 // Shared import pipeline: messages → de-duplicated listings/requests grouped in day-packs.
 import { parseMessage } from './parse.js';
 import { groupFromFileName, sourceForGroup } from './whatsapp.js';
-import { hash53, norm } from './text.js';
+import { hash53, norm, scrubText } from './text.js';
 
 /**
  * Re-post key: the same agent posting the same text again (every day, in many groups) is ONE listing.
@@ -95,9 +95,10 @@ export function appendToPacks(prefix, day, existing, newItems, limit = PACK_LIMI
   return [...changed.values()].map(({ size, ...p }) => ({ ...p, day }));
 }
 
-/** Strip non-persistent props before saving. */
+/** Strip non-persistent props before saving; text is made safe for JSON / Postgres (no half characters). */
+const scrubValue = (v) => (typeof v === 'string' ? scrubText(v) : Array.isArray(v) ? v.map(scrubValue) : v);
 export function toStored(item) {
   const o = {};
-  for (const [k, v] of Object.entries(item)) if (v !== undefined && !k.startsWith('_')) o[k] = v;
+  for (const [k, v] of Object.entries(item)) if (v !== undefined && !k.startsWith('_')) o[k] = scrubValue(v);
   return o;
 }

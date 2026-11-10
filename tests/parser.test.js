@@ -222,3 +222,18 @@ test('price extraction ignores maintenance and deposit', () => {
   const p = extractPrice('For rent condo\nMaintenance RM 300\nDeposit 2+1\nRental RM 1,800', 'rent');
   assert.equal(p.price, 1800);
 });
+
+test('text is cut and stored without half characters (the database rejects them)', async () => {
+  const { cut, scrubText } = await import('../listinghub/js/core/text.js');
+  const { toStored } = await import('../listinghub/js/core/importer.js');
+  const bold = '𝐅𝐨𝐫 𝐒𝐚𝐥𝐞'.repeat(12); // each letter is 2 UTF-16 units
+  for (let n = 1; n < 40; n++) assert.ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(cut(bold, n)), 'cut at ' + n);
+  assert.equal(cut('short', 80), 'short');
+  assert.equal(scrubText('ok \uD835 broken'), 'ok � broken');
+  const stored = toStored({ id: 'x', title: 'a\uD83D', features: ['b\uDC56'], n: 5 });
+  assert.equal(JSON.stringify(stored).includes('\\ud8'), false);
+  assert.equal(stored.n, 5);
+  // a real title that used to be cut mid-letter
+  const l = listing(`FOR SALE\n${'𝐭𝐨𝐫𝐞𝐲 古来双层排屋 𝐅𝐨𝐫 𝐒𝐚𝐥𝐞 '.repeat(5)}\nPrice RM 500k\n0123456789`);
+  assert.ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(l.title));
+});

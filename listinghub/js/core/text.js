@@ -47,6 +47,20 @@ export function phraseIn(query, text) {
 
 export const prepField = (text) => ({ s: norm(text), w: wordForm(text) });
 
+// A UTF-16 half of a character (lone surrogate) is invalid in JSON/Postgres and makes a whole batch fail.
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+export const scrubText = (s) => String(s ?? '').replace(LONE_SURROGATE, '�');
+
+/** Cut to at most n characters WITHOUT splitting an emoji or a "𝐛𝐨𝐥𝐝" letter in half. */
+export function cut(s, n) {
+  const str = String(s ?? '');
+  if (str.length <= n) return str;
+  let end = n;
+  const c = str.charCodeAt(end - 1);
+  if (c >= 0xd800 && c <= 0xdbff) end--; // would end on the first half of a pair
+  return str.slice(0, end);
+}
+
 /** Remove emoji and pictographs (WhatsApp wa.me text must be plain). */
 export function stripEmoji(s) {
   return String(s ?? '')

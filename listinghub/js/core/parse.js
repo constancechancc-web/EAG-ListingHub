@@ -5,7 +5,7 @@ import {
 } from './classify.js';
 import { extractPrice, parseBudget, scanAmounts } from './price.js';
 import { parseRequestAreas, recoverAreas, isSignatureLine } from './areas.js';
-import { norm, stripInvisible, stripEmoji, normPhone, displayName } from './text.js';
+import { norm, stripInvisible, stripEmoji, normPhone, displayName, cut } from './text.js';
 import { TYPE_CAT } from './constants.js';
 
 const PHONE_RE = /(?:\+?6?0)1\d[\s-]?\d{3,4}[\s-]?\d{3,4}/g;
@@ -51,12 +51,12 @@ function titleAndArea(text) {
       if (s.length >= 3 && /[a-z㐀-鿿]{3}/i.test(s) && !/^(?:rm|price|rental|budget)/i.test(s)) { title = s; break; }
     }
   }
-  title = title.replace(/^(?:at|in|@)\s+/i, '').slice(0, 80);
+  title = cut(title.replace(/^(?:at|in|@)\s+/i, ''), 80);
   if (!area) {
     const withPlace = usable.find((l) => l !== title && PLACE_HINT.test(l) && l.length <= 100 && !/rm\s*\d/i.test(l));
     area = withPlace ? stripKind(withPlace) : title;
   }
-  return { title: title || 'Untitled', area: area.slice(0, 120) };
+  return { title: title || 'Untitled', area: cut(area, 120) };
 }
 
 const IGNORE_SHORT = /^(?:sold|rented|taken|booked|done|closed|deal|已售|已租|成交|已成交|租出|卖出|ok|okay|noted|thanks|thank you|tq|tqvm|good morning|morning|gm|hi|hello|test|👍|🙏)\b/i;

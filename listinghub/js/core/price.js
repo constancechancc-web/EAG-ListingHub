@@ -1,3 +1,4 @@
+import { cut } from './text.js';
 // Money parsing for listings (price, bank value) and requests (budget).
 
 const NUM = String.raw`(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)`;
@@ -98,7 +99,7 @@ export function parseBudget(text, kind) {
   const lines = String(text).split(/\n/);
   if (NO_BUDGET.test(text)) {
     const l = lines.find((x) => NO_BUDGET.test(x));
-    return { ...none, budgetText: (l || '').trim().slice(0, 80) };
+    return { ...none, budgetText: cut((l || '').trim(), 80) };
   }
   for (const line of lines) {
     const l = line.toLowerCase();
@@ -143,7 +144,7 @@ export function parseBudget(text, kind) {
     if (min != null && max != null && min > max) [min, max] = [max, min];
     const plaus = (v) => v == null || (kind === 'rent' ? v >= 100 && v <= 300000 : v >= 1000);
     if (!plaus(min) || !plaus(max)) continue;
-    return { budgetMin: min, budgetMax: max, budgetText: line.trim().slice(0, 80) };
+    return { budgetMin: min, budgetMax: max, budgetText: cut(line.trim(), 80) };
   }
   return none;
 }
