@@ -96,14 +96,18 @@ export function createSupabaseStore() {
    * Big tables (listings): ids are hashes in base 36, evenly spread, so the table is cut into slices by first
    * character and 6 slices load at the same time. The slices cover every possible id (no gaps, no overlaps).
    */
-  async function selectAllSliced(table, columns, filter) {
+  async function selectAllSliced(table, columns, filter, onSlice) {
     const ALPHA = '0123456789abcdefghijklmnopqrstuvwxyz';
     const slices = [[null, ALPHA[0]]];
     for (let i = 0; i < ALPHA.length; i++) slices.push([ALPHA[i], i + 1 < ALPHA.length ? ALPHA[i + 1] : null]);
     const results = new Array(slices.length);
-    let next = 0;
+    let next = 0, done = 0;
     await Promise.all(Array.from({ length: 6 }, async () => {
-      while (next < slices.length) { const n = next++; results[n] = await keysetRange(table, columns, filter, slices[n][0], slices[n][1]); }
+      while (next < slices.length) {
+        const n = next++;
+        results[n] = await keysetRange(table, columns, filter, slices[n][0], slices[n][1]);
+        if (onSlice) onSlice(++done / slices.length);
+      }
     }));
     return results.flat();
   }
@@ -142,11 +146,18 @@ export function createSupabaseStore() {
     mode: 'supabase',
 
     onUser(cb) {
+      // Supabase also reports "signed in" again whenever the browser tab regains focus. Only a real change of user counts.
+      let emittedFor;
       const emit = async (s) => {
         session = s;
+        const id = s ? s.user.id : null;
+        if (emittedFor === id) return;
+        emittedFor = id;
         if (!s) return cb(null);
-        const { data: role } = await sb.rpc('app_role');
-        cb({ email: s.user.email, name: s.user.user_metadata?.full_name || '', role: role && role !== 'none' ? role : null });
+        try {
+          const { data: role } = await sb.rpc('app_role');
+          cb({ email: s.user.email, name: s.user.user_metadata?.full_name || '', role: role && role !== 'none' ? role : null });
+        } catch (e) { emittedFor = undefined; throw e; }
       };
       const { data } = sb.auth.onAuthStateChange((event, s) => {
         if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'SIGNED_OUT') setTimeout(() => emit(s), 0);
@@ -162,7 +173,20 @@ export function createSupabaseStore() {
     idToken: async () => (await sb.auth.getSession()).data.session?.access_token || null,
 
     /** The list for the screen: from this browser's saved copy plus what changed since; a full download if there is none. */
-    async loadAll(fromDay) {
+    /** This browser's saved copy, whatever its age (null if there is none). Used to show the app instantly. */
+    async loadCached(fromDay) {
+      const inRange = (x) => !fromDay || (x.day || '') >= fromDay;
+      const db = await openCache();
+      if (!db) return null;
+      try {
+        const meta = await cacheGet(db, 'meta', 'sync');
+        if (!meta || meta.v !== CACHE_VERSION) return null;
+        const [cl, cr] = await Promise.all([cacheAll(db, 'listings'), cacheAll(db, 'requests')]);
+        return { listings: cl.map((x) => x.item).filter(inRange), requests: cr.map((x) => x.item).filter(inRange) };
+      } catch { return null; }
+    },
+
+    async loadAll(fromDay, onProgress) {
       const inRange = (x) => !fromDay || (x.day || '') >= fromDay;
       const db = await openCache();
       let meta = null;
@@ -178,7 +202,7 @@ export function createSupabaseStore() {
         } catch { /* cache unusable → full download below */ }
       }
       const f = fromDay ? (q) => q.gte('day', fromDay) : null;
-      const [l, r] = await Promise.all([selectAllSliced('listings', 'data,updated_at', f), selectAll('requests', 'data,status,updated_at', f)]);
+      const [l, r] = await Promise.all([selectAllSliced('listings', 'data,updated_at', f, onProgress), selectAll('requests', 'data,status,updated_at', f)]);
       const out = { listings: l.map(fromRow), requests: r.map(fromRow), fromCache: false, changed: l.length + r.length };
       if (db) {
         try {

@@ -8,7 +8,6 @@ import { buildAreaVocab } from './core/areas.js';
 import { listingEnquiry, clientAgentMessage, waLink, listingSummary, bankValueDiff } from './core/messages.js';
 import { fmtRM, compilePhrase, fieldHas, prepField, digitsOnly, norm } from './core/text.js';
 import { analyseRequest } from './core/parse.js';
-import { detectFeatures } from './core/classify.js';
 
 // ───────────────────────── state ─────────────────────────
 const S = {
@@ -32,6 +31,7 @@ const S = {
   groupMap: {}, // admin overrides: groupKey → source
   lastUpdated: null, // ISO time of the newest import
   matchTotal: null, // number of match pairs (computed in the background)
+  loaded: false, loading: false, cachePromise: null,
 };
 const APP_VERSION = 'v2.0';
 const LOT_POSITIONS = [['Intermediate', 'Intermediate Lot'], ['End lot', 'End Lot'], ['Corner lot', 'Corner Lot']];
@@ -111,25 +111,62 @@ async function boot() {
     const { createSupabaseStore } = await import('./store/supabase-store.js');
     S.store = createSupabaseStore();
   }
+  // read this browser's saved copy while the sign-in is being checked (it is only shown once the role is confirmed)
+  S.cachePromise = S.store.loadCached ? S.store.loadCached(fromDay()).catch(() => null) : null;
   S.store.onUser(onUser);
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 
+const metaCache = {
+  get() { try { return JSON.parse(localStorage.getItem('eag.meta') || 'null'); } catch { return null; } },
+  set(v) { try { localStorage.setItem('eag.meta', JSON.stringify(v)); } catch {} },
+};
+
 async function onUser(u) {
+  // The same person "signing in" again (browser tab regained focus) needs nothing: keep the screen as it is.
+  if (u && S.user && S.user.email === u.email && S.user.role === u.role && (S.loaded || S.loading)) return;
   S.user = u;
-  if (!u) return renderLogin();
-  if (!u.role) return renderDenied(u);
-  app().innerHTML = `<section class="panel center"><div class="spinner"></div><p>Loading listings 正在载入房源…</p></section>`;
+  S.loaded = false;
+  if (!u) { S.loading = false; return renderLogin(); }
+  if (!u.role) { S.loading = false; return renderDenied(u); }
+  S.loading = true;
+
+  // 1) Show the saved copy at once, then bring it up to date quietly.
+  let cached = null;
+  try { cached = S.cachePromise ? await S.cachePromise : null; } catch {}
+  S.cachePromise = null;
+  if (cached && (cached.listings.length || cached.requests.length)) {
+    setData(cached.listings, cached.requests);
+    const m = metaCache.get();
+    if (m) { S.groupMap = m.groupMap || {}; S.lastUpdated = m.lastUpdated || null; }
+    applySources();
+    dataChanged();
+    showApp();
+    applyBranding();
+    refreshInBackground();
+    return;
+  }
+
+  // 2) First visit on this device (or the saved copy was cleared): download everything once.
+  app().innerHTML = `<section class="panel center"><div class="spinner"></div><p>Loading listings 正在载入房源… <b id="loadPct"></b></p>
+    <p class="small muted">First time on this device only, later it opens instantly. 只有这台设备第一次会比较久，之后很快。</p></section>`;
   try {
     await loadData();
-    applyBranding();
   } catch (e) {
+    S.loading = false;
     app().innerHTML = `<section class="panel center"><p class="err">Could not load data 载入失败</p><p class="small muted">${esc(e.message)}</p><button class="btn" data-act="signout">Sign out 登出</button></section>`;
     bindGlobal();
     return;
   }
-  const tabs = tabsFor(u.role);
+  showApp();
+  applyBranding();
+}
+
+function showApp() {
+  const tabs = tabsFor(S.user.role);
   if (!tabs.some((t) => t.id === S.tab)) S.tab = 'search';
+  S.loaded = true;
+  S.loading = false;
   renderShell();
 }
 
@@ -165,20 +202,61 @@ function renderDenied(u) {
   bindGlobal();
 }
 
+function setData(listings, requests) {
+  const uniq = (arr) => { const m = new Map(); for (const x of arr) m.set(x.id, x); return [...m.values()]; };
+  S.listings = uniq(listings).map(prepareListing);
+  S.requests = uniq(requests);
+}
+
+const onLoadProgress = (p) => { const el = document.getElementById('loadPct'); if (el) el.textContent = Math.round(p * 100) + '%'; };
+
 async function loadData() {
-  const [{ listings, requests }, gs, last] = await Promise.all([
-    S.store.loadAll(fromDay()),
+  const [data, gs, last] = await Promise.all([
+    S.store.loadAll(fromDay(), onLoadProgress),
     S.store.getMeta('groupSources').catch(() => null),
     S.store.lastUpdated().catch(() => null),
   ]);
-  const uniq = (arr) => { const m = new Map(); for (const x of arr) m.set(x.id, x); return [...m.values()]; };
+  setData(data.listings, data.requests);
   S.groupMap = (gs && gs.map) || {};
   S.lastUpdated = last;
-  // features are re-read from the original post, so rule improvements also fix listings imported earlier
-  S.listings = uniq(listings).map((l) => { l.features = detectFeatures(l.raw || ''); return prepareListing(l); });
-  S.requests = uniq(requests);
+  metaCache.set({ groupMap: S.groupMap, lastUpdated: S.lastUpdated });
   applySources();
   dataChanged();
+}
+
+/** After the saved copy is on screen: fetch what changed (and the small settings) and update the screen only if something did. */
+async function refreshInBackground() {
+  try {
+    const [data, gs, last] = await Promise.all([
+      S.store.loadAll(fromDay()),
+      S.store.getMeta('groupSources').catch(() => null),
+      S.store.lastUpdated().catch(() => null),
+    ]);
+    const map = (gs && gs.map) || {};
+    const metaChanged = JSON.stringify(map) !== JSON.stringify(S.groupMap) || (last || null) !== (S.lastUpdated || null);
+    if (!data.changed && !metaChanged) return;
+    if (!S.user || !S.loaded) return; // signed out meanwhile
+    S.groupMap = map;
+    S.lastUpdated = last;
+    metaCache.set({ groupMap: map, lastUpdated: last });
+    if (data.changed) setData(data.listings, data.requests);
+    applySources();
+    dataChanged();
+    softRefresh();
+  } catch (e) {
+    toast('Could not check for new listings 无法更新，稍后再试', 3500);
+  }
+}
+
+/** Redraw the current tab with the new data, keeping the filters and how far the list was scrolled. */
+function softRefresh() {
+  if (S.tab === 'search' && document.querySelector('.stats-head')) {
+    document.querySelector('.stats-head').outerHTML = statsHTML();
+    fillStats();
+    S.results = searchListings(S.listings, S.f);
+    renderResults();
+  } else if (S.tab === 'requests') renderReqList();
+  else if (S.tab === 'match') runMatch();
 }
 
 /** Source comes from the group name (rules + Admin overrides), so a change applies to old items too. */
@@ -187,8 +265,10 @@ function applySources() {
   for (const x of S.requests) x.source = sourceForGroup(x.group, S.groupMap);
 }
 
+const getVocab = () => (S.vocab ||= buildAreaVocab(S.listings)); // only needed for matching: built on first use
+
 function dataChanged() {
-  S.vocab = buildAreaVocab(S.listings);
+  S.vocab = null;
   S.prepared = null;
   S.matchTotal = null;
   S.prepGen++;
@@ -211,7 +291,7 @@ async function ensurePrepared() {
   const gen = S.prepGen;
   const out = [];
   const reqs = S.requests.filter((r) => Date.parse(r.postedAt) >= cutoffTime());
-  const ok = await runSliced(reqs, (r) => out.push(prepareRequest(r, S.vocab)), { isCurrent: () => gen === S.prepGen });
+  const ok = await runSliced(reqs, (r) => out.push(prepareRequest(r, getVocab())), { isCurrent: () => gen === S.prepGen });
   if (!ok) return ensurePrepared();
   S.prepared = out;
   return out;
@@ -718,7 +798,7 @@ function renderReqList(reset) {
   const list = filteredRequests();
   $('#rqCount').textContent = `${list.length.toLocaleString()} requests 个需求`;
   box.innerHTML = list.slice(0, S.rqShown).map((r) => {
-    const a = analyseRequest(r.raw, S.vocab); // text overrides saved fields
+    const a = analyseRequest(r.raw, getVocab()); // text overrides saved fields
     const full = { ...r, ...a };
     const types = a.types.length ? a.types.map((t) => `${t} ${TYPE_ZH[t] || ''}`).join(', ') : 'Type unknown 类型不明';
     const closed = (r.status || 'open') === 'closed';
