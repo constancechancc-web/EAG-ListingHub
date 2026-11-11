@@ -93,13 +93,15 @@ export function createSupabaseStore() {
   }
 
   /**
-   * Big tables (listings): ids are hashes in base 36, evenly spread, so the table is cut into slices by first
-   * character and 6 slices load at the same time. The slices cover every possible id (no gaps, no overlaps).
+   * Big tables (listings): ids are hashes written in base 36, spread evenly over the numbers but not over the text
+   * (many ids start with 1 or 2). SLICE_BOUNDS cuts the text order into 48 slices that hold about the same number of
+   * ids each (worked out once from 600,000 random ids), so no slice is much slower than the others. 6 load at a time.
+   * The slices cover every possible id: no gaps, no overlaps.
    */
+  const SLICE_BOUNDS = ['1', '13', '15', '17', '18', '1a', '1c', '1e', '1g', '1h', '1j', '1l', '1n', '1p', '1q', '1s', '1u', '1w', '1y', '1z', '2', '23', '25', '26', '28', '2a', '2c', '2e', '2f', '3', '5', '7', '8', 'a', 'c', 'e', 'g', 'h', 'j', 'l', 'n', 'p', 'q', 's', 'u', 'w', 'y'];
   async function selectAllSliced(table, columns, filter, onSlice) {
-    const ALPHA = '0123456789abcdefghijklmnopqrstuvwxyz';
-    const slices = [[null, ALPHA[0]]];
-    for (let i = 0; i < ALPHA.length; i++) slices.push([ALPHA[i], i + 1 < ALPHA.length ? ALPHA[i + 1] : null]);
+    const slices = [];
+    for (let i = 0; i <= SLICE_BOUNDS.length; i++) slices.push([i ? SLICE_BOUNDS[i - 1] : null, i < SLICE_BOUNDS.length ? SLICE_BOUNDS[i] : null]);
     const results = new Array(slices.length);
     let next = 0, done = 0;
     await Promise.all(Array.from({ length: 6 }, async () => {
