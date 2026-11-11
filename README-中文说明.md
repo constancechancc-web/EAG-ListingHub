@@ -94,7 +94,7 @@ GitHub 仓库：https://github.com/constancechancc-web/EAG-ListingHub
 1. 打开网址 → 用你的 Gmail 登录（= Admin）。
 2. **后台 Backend** → 先按 **Download backup 下载备份**（以后每次删除前都要先备份）。
 3. **导入房源 Import** → 上传一两个群组的聊天导出，检查房源和需求对不对。
-4. **后台 Backend → Users 用户权限** → 先只加 **一位 Viewer** 经纪，请他用手机试用。
+4. **后台 Backend → Users Access 用户权限** → 加入经纪（Viewer）。
 5. 没问题之后，才加入其他经纪（Viewer）和帮你导入的同事（Editor）。
 
 ---

@@ -76,7 +76,7 @@ test('an Editor can add (and skip duplicates) but not change, delete or manage u
   assert.equal((await as('editor@gmail.com', `update listings set data = '{}' where id = 'L1'`)).affectedRows, 0);
   assert.equal((await as('editor@gmail.com', `delete from listings`)).affectedRows, 0);
   assert.equal((await as('editor@gmail.com', `delete from seen`)).affectedRows, 0);
-  await assert.rejects(as('editor@gmail.com', `insert into app_users values ('x@gmail.com', 'viewer')`), /row-level security/);
+  await assert.rejects(as('editor@gmail.com', `insert into app_users values ('x@gmail.com', 'editor')`), /row-level security/); // editors cannot create editors
 });
 
 test('admin can manage everything but can never create a second admin', async () => {
@@ -150,4 +150,31 @@ test('migration 2026-11-10b: updated_at moves forward when a row is added or a r
   await db.exec('select pg_sleep(0.05)');
   await call([row('U1', '2026-11-02T10:00:00+08:00')]); // older re-post → ignored, updated_at unchanged
   assert.equal(String((await rows(OWNER, `select updated_at from listings where id = 'U1'`))[0].updated_at), String(t2));
+});
+
+test('Editors manage Viewers only: add / change / remove viewers, see the viewer list; never touch editors or the admin', async () => {
+  // (the migration is also tested on top of an older database: the schema above already contains it, so this must be a no-op)
+  await db.exec(fs.readFileSync(new URL('../supabase/migrations/2026-11-11-editor-manages-viewers.sql', import.meta.url), 'utf8'));
+  const E = 'editor@gmail.com', V = 'viewer@gmail.com';
+  // add a viewer, and "add" the same one again (upsert) works
+  await as(E, `insert into app_users (email, role) values ('newagent@gmail.com', 'viewer')`);
+  await as(E, `insert into app_users (email, role) values ('newagent@gmail.com', 'viewer') on conflict (email) do update set role = 'viewer'`);
+  // an editor cannot create an editor, nor promote a viewer to editor, nor create an admin
+  await assert.rejects(as(E, `insert into app_users (email, role) values ('sneaky@gmail.com', 'editor')`), /row-level security/);
+  await assert.rejects(as(E, `update app_users set role = 'editor' where email = 'newagent@gmail.com'`), /row-level security/); // cannot promote a viewer
+  await assert.rejects(as(E, `insert into app_users (email, role) values ('boss@gmail.com', 'admin')`), /check|row-level security/);
+  // an editor can see viewers (and themselves) but cannot touch editors
+  const seen = (await rows(E, 'select email, role from app_users')).map((r) => r.role);
+  assert.ok(seen.includes('viewer') && seen.includes('editor') === true); // own row only for editors
+  assert.equal((await rows(E, `select count(*)::int as n from app_users where role = 'editor'`))[0].n, 1);
+  assert.equal((await as(E, `delete from app_users where email = 'editor@gmail.com'`)).affectedRows, 0);
+  assert.equal((await as(E, `update app_users set role = 'viewer' where email = 'editor@gmail.com'`)).affectedRows, 0);
+  // an editor can remove a viewer
+  assert.equal((await as(E, `delete from app_users where email = 'newagent@gmail.com'`)).affectedRows, 1);
+  // viewers and strangers still cannot manage anyone
+  await assert.rejects(as(V, `insert into app_users (email, role) values ('z@gmail.com', 'viewer')`), /row-level security/);
+  assert.equal((await as(V, `delete from app_users where email = 'viewer@gmail.com'`)).affectedRows, 0);
+  await assert.rejects(as('stranger@gmail.com', `insert into app_users (email, role) values ('z@gmail.com', 'viewer')`), /row-level security/);
+  // a viewer still sees only their own row
+  assert.deepEqual((await rows(V, 'select email from app_users')).map((r) => r.email), ['viewer@gmail.com']);
 });

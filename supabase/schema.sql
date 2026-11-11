@@ -4,7 +4,7 @@
 --
 -- Roles are enforced HERE by Row Level Security, not by hiding buttons:
 --   admin  = OWNER email only (exactly one person) — full control
---   editor = app_users.role = 'editor' — can ADD listings/requests; cannot update, delete or manage users
+--   editor = app_users.role = 'editor' — can ADD listings/requests and add/remove VIEWERS; cannot update or delete listings
 --   viewer = app_users.role = 'viewer' — read only
 --   anyone else (even signed in with Google) — sees nothing
 -- ════════════════════════════════════════════════════════════════════════════
@@ -121,10 +121,16 @@ drop policy if exists "users add"    on public.app_users;
 drop policy if exists "users change" on public.app_users;
 drop policy if exists "users remove" on public.app_users;
 create policy "users read"   on public.app_users for select to authenticated
-  using (public.app_role() = 'admin' or email = lower(coalesce(auth.jwt() ->> 'email', '')));
-create policy "users add"    on public.app_users for insert to authenticated with check ((select public.app_role()) = 'admin');
-create policy "users change" on public.app_users for update to authenticated using ((select public.app_role()) = 'admin') with check ((select public.app_role()) = 'admin');
-create policy "users remove" on public.app_users for delete to authenticated using ((select public.app_role()) = 'admin');
+  using ((select public.app_role()) = 'admin' or email = lower(coalesce(auth.jwt() ->> 'email', ''))
+         or ((select public.app_role()) = 'editor' and role = 'viewer'));
+-- Editors manage VIEWERS only (add / change / remove). Creating or changing Editors is Admin only.
+create policy "users add"    on public.app_users for insert to authenticated
+  with check ((select public.app_role()) = 'admin' or ((select public.app_role()) = 'editor' and role = 'viewer'));
+create policy "users change" on public.app_users for update to authenticated
+  using ((select public.app_role()) = 'admin' or ((select public.app_role()) = 'editor' and role = 'viewer'))
+  with check ((select public.app_role()) = 'admin' or ((select public.app_role()) = 'editor' and role = 'viewer'));
+create policy "users remove" on public.app_users for delete to authenticated
+  using ((select public.app_role()) = 'admin' or ((select public.app_role()) = 'editor' and role = 'viewer'));
 
 drop policy if exists "meta read"  on public.meta;
 drop policy if exists "meta add"   on public.meta;

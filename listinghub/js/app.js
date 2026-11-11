@@ -313,7 +313,7 @@ function tabsFor(role) {
     match: '智能配对 Match',
     backup: '后台 Backend',
   };
-  const ids = role === 'admin' ? ['search', 'import', 'requests', 'match', 'backup'] : role === 'editor' ? ['search', 'import', 'match'] : ['search', 'match'];
+  const ids = role === 'admin' ? ['search', 'import', 'requests', 'match', 'backup'] : role === 'editor' ? ['search', 'import', 'match', 'backup'] : ['search', 'match'];
   return ids.map((id) => ({ id, label: all[id] }));
 }
 
@@ -994,6 +994,7 @@ async function aiHints(review) {
 // ───────────────────────── BACKUP (admin) ─────────────────────────
 let backupDone = false;
 async function viewBackup(v) {
+  const admin = S.user.role === 'admin';
   v.innerHTML = `
     <section class="panel">
       <h2>Backup 备份</h2>
@@ -1005,18 +1006,20 @@ async function viewBackup(v) {
       <div id="restoreStatus"></div>
     </section>
     <section class="panel">
-      <h2>Old data 旧资料 (> ${RETENTION_DAYS} days)</h2>
-      <p class="small muted">Items older than ${RETENTION_DAYS} days are already hidden. Delete them only after downloading a backup. 超过 ${RETENTION_DAYS} 天的资料已隐藏；下载备份后才可删除。</p>
-      <div id="oldInfo"><button class="btn small" data-act="old-count">Count old items 计算旧资料</button></div>
-    </section>
-    <section class="panel">
-      <h2>Users 用户权限</h2>
+      <h2>Users Access 用户权限</h2>
+      ${admin ? '' : '<p class="small muted">You can add and remove Viewers (agents). Editors are managed by the Admin. 你可以加入和移除 Viewer（经纪）；Editor 由管理员管理。</p>'}
       <div class="grid3" style="margin-top:10px">
         <label class="f" style="grid-column: span 2"><span>Gmail</span><input type="email" id="newEmail" placeholder="agent@gmail.com"></label>
-        <label class="f"><span>Role 身份</span><select id="newRole"><option value="viewer">Viewer 经纪</option><option value="editor">Editor 编辑</option></select></label>
+        <label class="f"><span>Role 身份</span><select id="newRole"><option value="viewer">Viewer 经纪</option>${admin ? '<option value="editor">Editor 编辑</option>' : ''}</select></label>
       </div>
       <button class="btn gold" data-act="user-add" style="margin-top:8px">Add / update 加入/更新</button>
       <div id="userList" style="margin-top:12px"><div class="spinner"></div></div>
+    </section>
+    ${admin ? `
+    <section class="panel">
+      <h2>Old data 旧资料 (> ${RETENTION_DAYS} days)</h2>
+      <p class="small muted">Items older than ${RETENTION_DAYS} days are already hidden. Delete them only after downloading a backup. 超过 ${RETENTION_DAYS} 天的资料已隐藏；下载备份后才可删除。</p>
+      <div id="oldInfo"><button class="btn small" data-act="old-count">Count old items 计算旧资料</button></div>
     </section>
     <section class="panel">
       <h2>Group sources 群组来源</h2>
@@ -1034,7 +1037,8 @@ async function viewBackup(v) {
       <h2 class="err">Clear all import data 清空全部导入资料</h2>
       <p class="small muted">Deletes ALL listings, WTB/WTR and duplicate history. Users are kept. Download a backup first.<br>会删除全部房源、需求和查重记录（用户名单保留）。请先下载备份。</p>
       <button class="btn danger" data-act="clear-all">Clear all 清空全部</button>
-    </section>`;
+    </section>
+    ` : ''}`;
   renderUsers();
   renderGroups();
 }
@@ -1107,7 +1111,8 @@ actionHandlers['clear-all'] = async () => {
 async function renderUsers() {
   const box = $('#userList');
   try {
-    const users = await S.store.listUsers();
+    let users = await S.store.listUsers();
+    if (S.user.role !== 'admin') users = users.filter((u) => u.role === 'viewer'); // editors manage viewers only
     box.innerHTML = users.length
       ? `<table class="simple">${users.map((u) => `<tr><td>${esc(u.email)}</td><td>${u.role === 'editor' ? 'Editor 编辑' : 'Viewer 经纪'}</td><td style="text-align:right"><button class="btn danger small" data-act="user-remove" data-email="${esc(u.email)}">Remove 移除</button></td></tr>`).join('')}</table>`
       : `<p class="muted small">No users yet 还没有用户</p>`;
@@ -1116,7 +1121,7 @@ async function renderUsers() {
 actionHandlers['user-add'] = async () => {
   const email = $('#newEmail').value.trim().toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast('Invalid email 邮箱格式不对'); return; }
-  await S.store.setUser(email, $('#newRole').value);
+  await S.store.setUser(email, S.user.role === 'admin' ? $('#newRole').value : 'viewer');
   $('#newEmail').value = '';
   toast('Saved 已保存');
   renderUsers();

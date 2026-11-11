@@ -260,7 +260,9 @@ export function createSupabaseStore() {
       const seenRows = [];
       for (const s of data.seen || []) for (const h of s.hashes || []) seenRows.push({ hash: h, day: s.day });
       if (seenRows.length) await insertNew('seen', seenRows, 'hash', false);
-      for (const u of data.users || []) if (u.email && (u.role === 'editor' || u.role === 'viewer')) await this.setUser(u.email, u.role);
+      for (const u of data.users || []) {
+        if (u.email && (u.role === 'editor' || u.role === 'viewer')) { try { await this.setUser(u.email, u.role); } catch { /* an Editor cannot create Editors: skipped */ } }
+      }
       return add;
     },
 
