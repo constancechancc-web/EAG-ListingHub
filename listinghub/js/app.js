@@ -746,7 +746,7 @@ function pairCard(p) {
         <details class="raw"><summary>WTB/WTR original post 需求原文</summary><pre>${esc(r.raw)}</pre></details>
         <div class="actions">
           <button class="btn small" data-act="copy-raw-l" data-id="${esc(l.id)}">Copy listing post 复制房源</button>
-          <button class="btn small" data-act="copy-raw-r" data-id="${esc(r.id)}">Copy WTB post 复制需求</button>
+          <button class="btn small" data-act="copy-raw-r" data-id="${esc(r.id)}">Copy WTB/WTR post 复制需求</button>
           <button class="btn wa small" data-act="wa-client" data-id="${esc(r.id)}" data-lid="${esc(l.id)}">WhatsApp Client Agent 联系客户经纪</button>
           <button class="btn wa small" data-act="wa-ren" data-id="${esc(l.id)}">WhatsApp Listing Agent 联系房源经纪</button>
         </div>
