@@ -330,3 +330,11 @@ test('price: "Price Dropped" / "Big Comm Rm28k" are not the price', async () => 
   assert.equal(extractPrice('*Price Dropped*\nStable tenant RM2500\nFor Sale\n💰Selling Price: RM 550k', 'sale').price, 550000);
   assert.equal(extractPrice('FOR SALE / RENT\nASKING PRICE\nApprox. RM27,200,000\n\nASKING RENTAL\nApprox. RM170,000 per month', 'sale').price, 27200000);
 });
+
+test('sale post that mentions tenant rental income stays For Sale', async () => {
+  const { listingKind } = await import('../listinghub/js/core/classify.js');
+  const { extractPrice } = await import('../listinghub/js/core/price.js');
+  const t = 'Desa Skudai Apartment\n5 Bed 2 Bath\nNow 4 Rooms Tenanted With Rental Income RM2,500+/-\nROI 8% - 9%\n\nAsking Sale RM350k\nBank Value RM370k';
+  assert.equal(listingKind(t), 'sale');
+  assert.equal(extractPrice(t, 'sale').price, 350000);
+});

@@ -198,13 +198,13 @@ export function genericRequestKind(text) {
 }
 
 // lines about monthly running costs (guard fee, maintenance ...) say nothing about sale vs rent
-const COST_LINE = /g&g|guard|maint|service charge|sinking|quit rent|管理费|保安|\bsc\b/i;
+const COST_LINE = /g&g|guard|maint|service charge|sinking|quit rent|管理费|保安|\bsc\b|rental income|tenanted|tenant|\broi\b|租客|回酬|回报/i; // + lines about the tenant's rent on a sale post
 
 export function listingKind(rawText) {
   const text = String(rawText).split('\n').filter((l) => !COST_LINE.test(l)).join('\n');
   const t = norm(text);
   // an explicit "For Sale" / "For Rent" line decides first
-  const fs_ = t.search(/for sale|出售|selling price|asking price|售价/), fr_ = t.search(/for rent|for let|to let|出租|rental price/);
+  const fs_ = t.search(/for sale|出售|selling price|asking price|asking sale|sale price|售价/), fr_ = t.search(/for rent|for let|to let|出租|rental price/);
   if (fs_ >= 0 && fr_ < 0) return 'sale';
   if (fr_ >= 0 && fs_ < 0) return 'rent';
   const head = headOf(text);
