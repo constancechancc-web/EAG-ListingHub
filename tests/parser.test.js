@@ -314,3 +314,19 @@ test('rent: a bare number after "For Rent" is a reference when a "Rental:" line 
   assert.equal(extractPrice('For Rent Z167\nSouthkey Mosaic\nRental: RM2500', 'rent').price, 2500);
   assert.equal(extractPrice('For Rent 2500 Taman X', 'rent').price, 2500);
 });
+
+test('rent/sale price: labelled line with colon, amount on next line, car park / ref lines ignored', async () => {
+  const { extractPrice } = await import('../listinghub/js/core/price.js');
+  assert.equal(extractPrice('resend\nFor Rent\nCarpark : rent 250\nDirection facing ：city\n\nRental：1900\nremark：rental include wifi', 'rent').price, 1900);
+  assert.equal(extractPrice('Alvin Lin Cobroke Rent Listing 319\n🔥 For Rent\n- Asking Rental: RM 1500 Nego Bit\n- Low Deposit: 1+1+0.5', 'rent').price, 1500);
+  assert.equal(extractPrice('For Rent 914\nDato Onn Shoplot\n\n💰Rental \nWhole Block (3 Floor) RM9,500\nGround Floor RM5800', 'rent').price, 9500);
+  assert.equal(extractPrice('Condo\nCar Park:  Car Park RM160/mth\n\n💰Rental\n*RM2,100 (Partial Furnished)*\n*RM2,400 (Fully Furnished)*', 'rent').price, 2100);
+  assert.equal(extractPrice('For Rent 647\nPiccolo\nRental: RM2200 nego', 'rent').price, 2200);
+});
+
+test('price: "Price Dropped" / "Big Comm Rm28k" are not the price', async () => {
+  const { extractPrice } = await import('../listinghub/js/core/price.js');
+  assert.equal(extractPrice('*Repost Drop Price*\n*Big Comm Rm28k*\nSHOPLOT FOR SALE\n*Asking Price RM378k Only*', 'sale').price, 378000);
+  assert.equal(extractPrice('*Price Dropped*\nStable tenant RM2500\nFor Sale\n💰Selling Price: RM 550k', 'sale').price, 550000);
+  assert.equal(extractPrice('FOR SALE / RENT\nASKING PRICE\nApprox. RM27,200,000\n\nASKING RENTAL\nApprox. RM170,000 per month', 'sale').price, 27200000);
+});

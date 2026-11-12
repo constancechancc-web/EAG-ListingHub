@@ -96,7 +96,36 @@ export function extractPrice(text, kind) {
     const a = scanAmounts(l).find((x) => plausible(fixUnits(x, 'sale'), 'sale'));
     if (a) { bankValue = fixUnits(a, 'sale'); break; }
   }
-  price = pass(true, true);
+  // A labelled price line ("Rental: RM2300", "Asking RM 1900", "Selling Price : RM 1.13mil", or "💰Rental" with the
+  // amount on the next line). Bare numbers only count straight after a colon; car park / deposit lines never count.
+  const NOT_PRICE_LINE = /car\s*park|carpark|parking|停车|deposit|advance|booking|押金/;
+  const strictPass = () => {
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i].toLowerCase();
+      if (BANK_LINE.test(l) || SKIP_LINE.test(l) || NOT_PRICE_LINE.test(l)) continue;
+      if (!(kind === 'rent' ? RENT_LABEL : SALE_LABEL).test(l.replace(/\bfor\s+(?:rent|sale|let)\b/g, ''))) continue;
+      if (kind !== 'rent' && NOT_SALE_PRICE.test(l)) continue;
+      const amts = scanAmounts(l);
+      for (const a of amts) {
+        if (!a.rm && !a.suffix && !/[:：]\s*$/.test(l.slice(Math.max(0, a.start - 3), a.start))) continue;
+        if (!a.rm && !a.suffix && a.base < 100) continue;
+        const v = fixUnits(a, kind);
+        if (plausible(v, kind)) return v;
+      }
+      // the amount is on one of the next lines - only when this line is JUST the label ("💰Rental", "ASKING PRICE"), not "Price Dropped"
+      const justLabel = /^[\W_]*(?:(?:selling|asking|sale|sales|listing|rental)\s*)?(?:price|rental|rent|租金|售价|价钱|价格|月租)\s*[:：]?[\W_]*$/.test(l.replace(/\bfor\s+(?:rent|sale|let)\b/g, '').trim());
+      if (!amts.length && justLabel) {
+        for (let j = i + 1; j <= i + 3 && j < lines.length; j++) {
+          const n = lines[j].toLowerCase();
+          if (BANK_LINE.test(n) || SKIP_LINE.test(n) || NOT_PRICE_LINE.test(n)) continue;
+          const a = scanAmounts(n).find((x) => (x.rm || x.suffix) && plausible(fixUnits(x, kind), kind));
+          if (a) return fixUnits(a, kind);
+        }
+      }
+    }
+    return null;
+  };
+  price = strictPass();
   if (price == null) price = pass(true);
   if (price == null) price = pass(false);
   return { price, bankValue };
