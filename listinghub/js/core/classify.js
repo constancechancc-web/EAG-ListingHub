@@ -204,7 +204,7 @@ export function listingKind(rawText) {
   const text = String(rawText).split('\n').filter((l) => !COST_LINE.test(l)).join('\n');
   const t = norm(text);
   // an explicit "For Sale" / "For Rent" line decides first
-  const fs_ = t.search(/for sale|出售|selling price|asking price|asking sale|sale price|售价/), fr_ = t.search(/for rent|for let|to let|出租|rental price/);
+  const fs_ = norm(rawText).search(/for sale|出售|selling price|asking price|asking sale|sale price|售价/), fr_ = t.search(/for rent|for let|to let|出租|rental price/);
   if (fs_ >= 0 && fr_ < 0) return 'sale';
   if (fr_ >= 0 && fs_ < 0) return 'rent';
   const head = headOf(text);

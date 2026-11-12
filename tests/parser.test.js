@@ -338,3 +338,8 @@ test('sale post that mentions tenant rental income stays For Sale', async () => 
   assert.equal(listingKind(t), 'sale');
   assert.equal(extractPrice(t, 'sale').price, 350000);
 });
+
+test('"出售/FOR SALE" on an ROI headline still means sale', async () => {
+  const { listingKind } = await import('../listinghub/js/core/classify.js');
+  assert.equal(listingKind('🔥 *出售/FOR SALE 🔥 *ROI 5.0%* 🎀\nShoplot\nPrice RM3.88m'), 'sale');
+});
