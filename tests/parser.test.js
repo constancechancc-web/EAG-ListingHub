@@ -276,3 +276,10 @@ test('Low Cost House 廉价屋: landed low-cost houses are their own type; low-c
   assert.deepEqual(classifyProperty('WTR low cost flat Perling 1000', 'request').types, [T.APT]);
   assert.ok(classifyProperty('WTB landed house Kulai', 'request').types.includes(T.LOWCOST));
 });
+
+test('price: the line that labels the price wins over other amounts (market gap, tenant rent)', async () => {
+  const { extractPrice } = await import('../listinghub/js/core/price.js');
+  assert.equal(extractPrice('*低于market 150K‼️Kulai 4 storey Shop Lot For Sale*\nSelling Price: RM699K nego\nBank Value RM850K', 'sale').price, 699000);
+  assert.equal(extractPrice('Shoplot\n✅ Tenanted 稳定租金 RM3000\n✅ ROI 4.8%\n💰Selling Price :RM780k nego\n💰Bank Value : RM800k', 'sale').price, 780000);
+  assert.equal(extractPrice('For Rent Taman X\nRental: RM2,500', 'rent').price, 2500);
+});

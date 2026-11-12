@@ -39,8 +39,13 @@ export function scanAmounts(line) {
 }
 
 const BANK_LINE = /bank\s*val|\bbv\b|valuation|估价|银行估|银行价|bank price|nilai bank/i;
-const SKIP_LINE = /maint|service charge|sinking|quit\s*rent|cukai|assessment|deposit|booking|admin fee|legal|管理费|订金|押金|stamp|loan|instal+ment|分期|月供|rebate|cashback|commission|komisen|utilit|ansuran|\bsc\b|\bsf\s*[:=]|cash\s*out|cashout|spa price|below market by|save\s+rm/i;
+const SKIP_LINE = /maint|service charge|sinking|quit\s*rent|cukai|assessment|deposit|booking|admin fee|legal|管理费|订金|押金|stamp|loan|instal+ment|分期|月供|rebate|cashback|commission|komisen|utilit|ansuran|\bsc\b|\bsf\s*[:=]|cash\s*out|cashout|spa price|below market|低于\s*market|低于市|低过市|lower than market|under market|save\s+rm/i;
 const PRICE_WORD = /price|asking|selling|\bsale\b|\bsell\b|rent|rental|sewa|harga|jual|租金|月租|售价|价钱|价格|价|卖|租|nego|only|\bfor\b|\brm\b|@|💰|💵|💲/i;
+
+const SALE_LABEL = /(?:selling|asking|sale|sales|listing|nett?|spa)\s*price|price|sp\s*[:：]|售价|价钱|价格|卖价|harga|asking|💰/;
+const RENT_LABEL = /rental|rent|租金|月租|sewa|price|💰/;
+// on a sale post these lines talk about rent / returns, not the selling price
+const NOT_SALE_PRICE = /rental|rent(?:ed)?|租金|租客|tenant|roi|回酬|回报|sewa|income/;
 
 function plausible(v, kind) {
   if (kind === 'rent') return v >= 100 && v <= 300000;
@@ -61,12 +66,17 @@ function fixUnits(a, kind) {
 export function extractPrice(text, kind) {
   const lines = String(text).split(/\n/);
   let price = null, bankValue = null;
-  const pass = (wantKeyword) => {
+  // pass 0 = a line that LABELS the price ("Selling Price: RM780k", "Asking 售价 ...") beats everything else in the post;
+  // pass 1 = any line with a price-like word; pass 2 = any money-looking amount.
+  const pass = (wantKeyword, strict) => {
     for (const line of lines) {
       const l = line.toLowerCase();
       if (BANK_LINE.test(l)) continue;
       if (SKIP_LINE.test(l)) continue;
-      if (wantKeyword && !PRICE_WORD.test(l)) continue;
+      if (strict) {
+        if (!(kind === 'rent' ? RENT_LABEL : SALE_LABEL).test(l)) continue;
+        if (kind !== 'rent' && NOT_SALE_PRICE.test(l)) continue;
+      } else if (wantKeyword && !PRICE_WORD.test(l)) continue;
       for (const a of scanAmounts(l)) {
         if (!wantKeyword && !a.rm && !a.suffix) continue;
         if (!a.rm && !a.suffix && a.base < 100) continue;
@@ -82,7 +92,8 @@ export function extractPrice(text, kind) {
     const a = scanAmounts(l).find((x) => plausible(fixUnits(x, 'sale'), 'sale'));
     if (a) { bankValue = fixUnits(a, 'sale'); break; }
   }
-  price = pass(true);
+  price = pass(true, true);
+  if (price == null) price = pass(true);
   if (price == null) price = pass(false);
   return { price, bankValue };
 }
