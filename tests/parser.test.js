@@ -290,3 +290,11 @@ test('For Sale / For Rent wording decides the kind; "can pm" is not "per month"'
   assert.equal(listingKind('For rent Taman X RM2500 pm'), 'rent');
   assert.equal(listingKind('Taman X RM2,500 pm 3 bedrooms'), 'rent');
 });
+
+test('guard-fee "/Monthly" and "Selling Price" → For Sale at RM1.13m', async () => {
+  const { listingKind } = await import('../listinghub/js/core/classify.js');
+  const { extractPrice } = await import('../listinghub/js/core/price.js');
+  const t = '*Kempas 全装修两层半排楼，省下最少150K装修费*\n\n2.5 Storey Terrace House\n24x70\nG&G Rm99/Monthly\n\nSelling Price : RM 1.13mil Nego\nBank Value RM1.15mil';
+  assert.equal(listingKind(t), 'sale');
+  assert.equal(extractPrice(t, 'sale').price, 1130000);
+});
