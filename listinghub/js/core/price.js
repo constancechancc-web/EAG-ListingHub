@@ -77,7 +77,8 @@ export function extractPrice(text, kind) {
       if (BANK_LINE.test(l)) continue;
       if (SKIP_LINE.test(l)) continue;
       if (strict) {
-        if (!(kind === 'rent' ? RENT_LABEL : SALE_LABEL).test(l)) continue;
+        // the heading words "For Rent" / "For Sale" are not a price label
+        if (!(kind === 'rent' ? RENT_LABEL : SALE_LABEL).test(l.replace(/\bfor\s+(?:rent|sale|let)\b/g, ''))) continue;
         if (kind !== 'rent' && NOT_SALE_PRICE.test(l)) continue;
       } else if (wantKeyword && !PRICE_WORD.test(l)) continue;
       for (const a of scanAmounts(l)) {

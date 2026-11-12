@@ -306,3 +306,11 @@ test('listing reference next to "For Rent" (D649, AH7799) is not the rent', asyn
   assert.equal(extractPrice('For Sale RM500k Taman X', 'sale').price, 500000);
   assert.equal(extractPrice('For Rent 2500 Taman X', 'rent').price, 2500);
 });
+
+test('rent: a bare number after "For Rent" is a reference when a "Rental:" line exists', async () => {
+  const { extractPrice } = await import('../listinghub/js/core/price.js');
+  assert.equal(extractPrice('For Rent 647\nPiccolo, Kulai\n24×75 (1800 sqft.)\nRental: RM2200 nego\nDeposit: 2+1+0.5', 'rent').price, 2200);
+  assert.equal(extractPrice('For Rent 689\nIskandar Puteri\nRental: RM2600\nDeposit: 2+1+0.5', 'rent').price, 2600);
+  assert.equal(extractPrice('For Rent Z167\nSouthkey Mosaic\nRental: RM2500', 'rent').price, 2500);
+  assert.equal(extractPrice('For Rent 2500 Taman X', 'rent').price, 2500);
+});
