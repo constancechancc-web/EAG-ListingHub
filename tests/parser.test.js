@@ -298,3 +298,11 @@ test('guard-fee "/Monthly" and "Selling Price" → For Sale at RM1.13m', async (
   assert.equal(listingKind(t), 'sale');
   assert.equal(extractPrice(t, 'sale').price, 1130000);
 });
+
+test('listing reference next to "For Rent" (D649, AH7799) is not the rent', async () => {
+  const { extractPrice } = await import('../listinghub/js/core/price.js');
+  assert.equal(extractPrice('For Rent D649\nBukit Indah, Jalan Indah 22\n1.5 Storey Terrace House\nRental: RM2300\nDeposit: 2+1+0.5', 'rent').price, 2300);
+  assert.equal(extractPrice('For Rent (AH7799)\nBukit Indah Jalan Indah 1\nSingle Storey Terrace\nAsking RM 1900', 'rent').price, 1900);
+  assert.equal(extractPrice('For Sale RM500k Taman X', 'sale').price, 500000);
+  assert.equal(extractPrice('For Rent 2500 Taman X', 'rent').price, 2500);
+});

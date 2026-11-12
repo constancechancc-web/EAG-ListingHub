@@ -63,8 +63,11 @@ function fixUnits(a, kind) {
 }
 
 /** Listing price + bank value from message text. kind: 'sale' | 'rent' | null */
+// a listing reference after the heading ("For Rent D649", "For Rent (AH7799)") is an ID, not an amount
+const REF_AFTER_HEADING = /\b(for\s+(?:rent|sale|let))\s*(?:\(\s*[a-z]{0,4}\d{2,6}\s*\)|#\s*\d+|(?!rm)[a-z]{1,4}[-\s]?\d{2,6}\b)/gi;
+
 export function extractPrice(text, kind) {
-  const lines = String(text).split(/\n/);
+  const lines = String(text).split(/\n/).map((l) => l.replace(REF_AFTER_HEADING, '$1'));
   let price = null, bankValue = null;
   // pass 0 = a line that LABELS the price ("Selling Price: RM780k", "Asking 售价 ...") beats everything else in the post;
   // pass 1 = any line with a price-like word; pass 2 = any money-looking amount.
