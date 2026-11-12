@@ -162,3 +162,15 @@ test('WhatsApp texts', () => {
   assert.ok(c.indexOf('WTR Sutera') < c.indexOf(DIVIDER) && c.indexOf(DIVIDER) < c.indexOf('Taman Molek'));
   assert.match(waLink('012-345 6789', 'hi'), /^https:\/\/wa\.me\/60123456789\?text=hi$/);
 });
+
+test('Low Cost House listings match Low Cost House requests only (exact type), not terraces or flats', () => {
+  const low = mk('For Sale\nPlentong 双层廉价屋 3Bed 3 Bath\nPrice RM 300k\n0123456789');
+  const ter = mk('For Sale\nPlentong double storey terrace\nPrice RM 300k\n0123456781');
+  const flat = mk('For Sale\nPlentong low cost flat level 2\nPrice RM 300k\n0123456782');
+  assert.equal(low.type, 'Low Cost House');
+  const idx = buildMatchIndex([low, ter, flat], now);
+  const r = prepareRequest(mk('WTB Plentong 廉价屋\nBudget 300k\n0129990000', 'Kelly'), buildAreaVocab([low, ter, flat]));
+  assert.deepEqual(matchRequest(r, idx).map((p) => p.listing.type), ['Low Cost House']);
+  const r2 = prepareRequest(mk('WTB Plentong double storey terrace\nBudget 300k\n0129990001', 'Kelly'), buildAreaVocab([low, ter, flat]));
+  assert.deepEqual(matchRequest(r2, idx).map((p) => p.listing.type), ['Terrace (2–2.5 Storey)']);
+});

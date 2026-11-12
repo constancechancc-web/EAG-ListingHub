@@ -5,6 +5,8 @@
 //   node scripts/auto-import.js              normal run
 //   node scripts/auto-import.js --dry-run    parse and count only, send nothing, save nothing
 //   node scripts/auto-import.js --force      treat every file as changed (messages already sent are still skipped)
+//   node scripts/auto-import.js --reclassify read every file again with the CURRENT rules and update only the listings/requests
+//                                            whose content changed (e.g. after adding a property type). Slow; run it once.
 //   node scripts/auto-import.js --init       create scripts/auto-import.config.json (with a new secret token)
 //   node scripts/auto-import.js --cleanup-now  run the old-data clean-up now (normally once a day); with --dry-run only counts
 //   node scripts/auto-import.js --no-cleanup   skip the clean-up in this run
@@ -28,6 +30,7 @@ const F = {
 };
 const args = new Set(process.argv.slice(2));
 const DRY = args.has('--dry-run');
+const RECLASSIFY = args.has('--reclassify');
 
 function log(msg) {
   const line = `${new Date().toLocaleString('en-GB', { timeZone: 'Asia/Kuala_Lumpur', hour12: false })}  ${msg}`;
@@ -108,8 +111,8 @@ async function main() {
     try { await call('GET'); } catch (e) { log(`Website not ready: ${e.message}`); process.exit(2); }
   }
   const names = fs.readdirSync(cfg.folder).filter((f) => /\.(zip|txt)$/i.test(f)).sort();
-  const seen = new Set(Object.keys(state.sent));
-  const totals = { files: 0, listings: 0, requests: 0, merged: 0, failed: 0, skipped: 0, added: 0, addedReq: 0 };
+  const seen = RECLASSIFY ? new Set() : new Set(Object.keys(state.sent)); // re-sort: look at every message again
+  const totals = { files: 0, listings: 0, requests: 0, merged: 0, failed: 0, skipped: 0, added: 0, addedReq: 0, changed: 0 };
   const report = [];
   log(`${DRY ? 'DRY RUN — ' : ''}Looking at ${names.length} file(s) in ${cfg.folder}`);
 
@@ -117,7 +120,7 @@ async function main() {
     const full = path.join(cfg.folder, name);
     const st = fs.statSync(full);
     const prev = state.files[name];
-    if (!args.has('--force') && prev && prev.mtimeMs === st.mtimeMs && prev.size === st.size) { totals.skipped++; continue; }
+    if (!args.has('--force') && !RECLASSIFY && prev && prev.mtimeMs === st.mtimeMs && prev.size === st.size) { totals.skipped++; continue; }
     const entry = { name, status: 'ok', size: st.size };
     report.push(entry);
     try {
@@ -128,22 +131,27 @@ async function main() {
       const res = processMessages(msgs, { fileName: name, seen });
       if (!DRY) {
         const pages = Math.max(Math.ceil(res.listings.length / 300), Math.ceil(res.requests.length / 300), Math.ceil(res.newHashes.length / 3000), 1);
-        let addedL = 0, addedR = 0;
+        let addedL = 0, addedR = 0, changedN = 0;
         for (let p = 0; p < pages; p++) {
           const out = await call('POST', {
             listings: res.listings.slice(p * 300, p * 300 + 300),
             requests: res.requests.slice(p * 300, p * 300 + 300),
-            seen: res.newHashes.slice(p * 3000, p * 3000 + 3000),
+            seen: RECLASSIFY ? [] : res.newHashes.slice(p * 3000, p * 3000 + 3000),
+            ...(RECLASSIFY ? { force: true } : {}),
           });
           addedL += (out.listings && out.listings.added) || 0; addedR += (out.requests && out.requests.added) || 0;
+          changedN += ((out.listings && out.listings.changed) || 0) + ((out.requests && out.requests.changed) || 0);
         }
+        totals.changed += changedN; entry.changed = changedN;
         entry.added = addedL; entry.addedReq = addedR; totals.added += addedL; totals.addedReq += addedR;
-        for (const h of res.newHashes) { state.sent[h.hash] = h.day; seen.add(h.hash); }
-        state.files[name] = { mtimeMs: st.mtimeMs, size: st.size, at: new Date().toISOString() };
-        saveState();
+        if (!RECLASSIFY) {
+          for (const h of res.newHashes) { state.sent[h.hash] = h.day; seen.add(h.hash); }
+          state.files[name] = { mtimeMs: st.mtimeMs, size: st.size, at: new Date().toISOString() };
+          saveState();
+        }
       }
       totals.files++; totals.listings += res.listings.length; totals.requests += res.requests.length; totals.merged += res.merged;
-      log(`${DRY ? '[dry] ' : ''}${name}: ${res.listings.length} listings, ${res.requests.length} requests, ${res.merged} re-posts merged, ${res.duplicates} already sent${res.review.length ? `, ${res.review.length} unclear` : ''}`);
+      log(`${DRY ? '[dry] ' : ''}${RECLASSIFY ? '[re-sort] ' : ''}${name}${entry.changed != null ? ` (${entry.changed} updated)` : ''}: ${res.listings.length} listings, ${res.requests.length} requests, ${res.merged} re-posts merged, ${res.duplicates} already sent${res.review.length ? `, ${res.review.length} unclear` : ''}`);
     } catch (e) {
       entry.status = entry.status === 'ok' ? (e.message === 'NOT_WHATSAPP' ? 'failed' : 'failed') : entry.status;
       entry.reason = e.message === 'NOT_WHATSAPP' ? 'Not a WhatsApp export' : e.message === 'NO_TXT_IN_ZIP' ? 'No chat text inside the zip' : e.message;
@@ -156,12 +164,12 @@ async function main() {
   for (const [h, d] of Object.entries(state.sent)) if (d < fromDay) delete state.sent[h];
   saveState();
 
-  log(`${DRY ? 'DRY RUN ' : ''}done: ${totals.files} file(s) read, ${totals.skipped} unchanged, ${totals.failed} failed; ${DRY ? `${totals.listings} listings, ${totals.requests} requests found` : `${totals.added} new listings, ${totals.addedReq} new requests added (${totals.listings} + ${totals.requests} checked)`}; ${totals.merged} re-posts merged`);
+  log(`${DRY ? 'DRY RUN ' : ''}done: ${totals.files} file(s) read, ${totals.skipped} unchanged, ${totals.failed} failed; ${DRY ? `${totals.listings} listings, ${totals.requests} requests found` : `${totals.added} new listings, ${totals.addedReq} new requests added${RECLASSIFY ? `, ${totals.changed} updated with the new rules` : ''} (${totals.listings} + ${totals.requests} checked)`}; ${totals.merged} re-posts merged`);
   // Old data (older than the app's 90-day window): back it up to a file on this computer, check the file, then delete it
   // from the website. Once a day; if anything does not match, nothing is deleted and the next run tries again.
   const today = mytDay(Date.now());
   let cleanup = null;
-  if (!args.has('--no-cleanup') && (args.has('--cleanup-now') || (!DRY && state.lastCleanup !== today))) {
+  if (!RECLASSIFY && !args.has('--no-cleanup') && (args.has('--cleanup-now') || (!DRY && state.lastCleanup !== today))) {
     try {
       cleanup = await runOldDataCleanup({
         call, log, dryRun: DRY, before: fromDay,

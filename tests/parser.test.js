@@ -256,3 +256,23 @@ test('iPhone exports set to Chinese: [2026/11/05 下午3:45:12], 晚上/凌晨/�
   assert.equal(msgs[0].day, '2026-11-05');
   assert.equal(parseChatText('[2026/11/05 晚上11:50:01] Agent B: hello there my friend')[0].postedAt, '2026-11-05T23:50:01+08:00');
 });
+
+test('Low Cost House 廉价屋: landed low-cost houses are their own type; low-cost FLATS stay Apartment / Flat', async () => {
+  const { TYPES, TYPE_ZH } = await import('../listinghub/js/core/constants.js');
+  assert.equal(TYPE_ZH['Low Cost House'], '廉价屋');
+  assert.ok(TYPES.some((t) => t.id === 'Low Cost House' && t.cat === 'Residential'));
+  const type = (text) => classifyProperty(text, 'listing').type;
+  for (const s of [
+    'Johor Jaya超美全装修3房2厕单层廉价屋 For Sale', '#Plentong 全装修美美 双层廉价屋 3Bed 3 Bath', 'Low cost house Taman Pelangi for sale', 'LOW COST HOUSE Ulu Tiram',
+  ]) assert.equal(type(s), T.LOWCOST, s);
+  // not written as "Low Cost House" → NOT this type
+  for (const s of [
+    'Low cost flat (level 4) Perling for sale', 'Flat Kos Rendah Plentong Untik Dijual 廉价组屋', 'Medium cost flat Skudai',
+    'Perling 平价屋 3房 for sale', 'Low cost Plentong 3 bed for sale', 'Low cost 2 storey Taman Maju for sale', 'rumah kos rendah Ulu Tiram dijual',
+  ]) assert.notEqual(type(s), T.LOWCOST, s);
+  assert.equal(type('Taman Molek double storey terrace for sale'), T.TER2); // ordinary terraces are unchanged
+  // requests
+  assert.deepEqual(classifyProperty('WTB 廉价屋 Johor Jaya budget 300k', 'request').types, [T.LOWCOST]);
+  assert.deepEqual(classifyProperty('WTR low cost flat Perling 1000', 'request').types, [T.APT]);
+  assert.ok(classifyProperty('WTB landed house Kulai', 'request').types.includes(T.LOWCOST));
+});

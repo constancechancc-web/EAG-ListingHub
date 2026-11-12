@@ -5,6 +5,7 @@ export const CATEGORIES = ['Residential', 'Commercial', 'Industrial', 'Land'];
 export const TYPES = [
   { id: 'Condo / Serviced Residence', cat: 'Residential', zh: '公寓' },
   { id: 'Apartment / Flat', cat: 'Residential', zh: '组屋/平价屋' },
+  { id: 'Low Cost House', cat: 'Residential', zh: '廉价屋' },
   { id: 'Terrace (1–1.5 Storey)', cat: 'Residential', zh: '单层排屋' },
   { id: 'Terrace (2–2.5 Storey)', cat: 'Residential', zh: '双层排屋' },
   { id: 'Terrace (3+ Storey)', cat: 'Residential', zh: '三层排屋' },
@@ -28,6 +29,7 @@ export const CATEGORY_ZH = { Residential: '住宅', Commercial: '商业', Indust
 export const T = {
   CONDO: 'Condo / Serviced Residence',
   APT: 'Apartment / Flat',
+  LOWCOST: 'Low Cost House',
   TER1: 'Terrace (1–1.5 Storey)',
   TER2: 'Terrace (2–2.5 Storey)',
   TER3: 'Terrace (3+ Storey)',
@@ -44,7 +46,7 @@ export const T = {
   ILAND: 'Industrial Land',
   ALAND: 'Agricultural Land',
 };
-export const LANDED_TYPES = [T.TER1, T.TER2, T.TER3, T.TOWN, T.CLUSTER, T.SEMID, T.BUNG];
+export const LANDED_TYPES = [T.TER1, T.TER2, T.TER3, T.LOWCOST, T.TOWN, T.CLUSTER, T.SEMID, T.BUNG];
 
 // Regions in priority order: first match wins.
 export const REGIONS = [

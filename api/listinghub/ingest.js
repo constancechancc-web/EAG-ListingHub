@@ -34,6 +34,43 @@ function clean(prefix, it) {
   return { id: data.id, day: data.day, posted_at: data.postedAt, data };
 }
 
+/** Same content, whatever the order of the keys (the database stores keys in its own order). */
+function deepEqual(a, b) {
+  if (a === b) return true;
+  if (a == null || b == null || typeof a !== 'object' || typeof b !== 'object') return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const ka = Object.keys(a).filter((k) => a[k] !== undefined), kb = Object.keys(b).filter((k) => b[k] !== undefined);
+  if (ka.length !== kb.length) return false;
+  return ka.every((k) => deepEqual(a[k], b[k]));
+}
+
+/**
+ * RE-SORT mode (body.force): the same listings, read again with newer rules (e.g. a new property type).
+ * Only rows whose content really changed are written (so devices only sync those), a row is never moved back in time,
+ * and a request's open/closed status is left alone.
+ */
+async function reclassify(table, rows) {
+  const out = { added: 0, changed: 0, same: 0, skippedOlder: 0 };
+  for (let i = 0; i < rows.length; i += 300) {
+    const batch = rows.slice(i, i + 300);
+    const existing = check(await db().from(table).select('id,posted_at,data').in('id', batch.map((r) => r.id)));
+    const byId = new Map(existing.map((e) => [e.id, e]));
+    const todo = [];
+    for (const r of batch) {
+      const e = byId.get(r.id);
+      if (!e) { todo.push(r); out.added++; continue; }
+      if (Date.parse(r.posted_at) < Date.parse(e.posted_at)) { out.skippedOlder++; continue; }
+      if (Date.parse(r.posted_at) === Date.parse(e.posted_at) && deepEqual(e.data, r.data)) { out.same++; continue; }
+      todo.push(r); out.changed++;
+    }
+    if (todo.length) {
+      const now = new Date().toISOString();
+      check(await db().from(table).upsert(todo.map((r) => ({ id: r.id, day: r.day, posted_at: r.posted_at, data: r.data, updated_at: now })), { onConflict: 'id' }));
+    }
+  }
+  return out;
+}
+
 async function importItems(table, rows) {
   let added = 0, bumped = 0;
   for (let i = 0; i < rows.length; i += 300) {
@@ -112,8 +149,8 @@ export default async function handler(req, res) {
     }
   }
   try {
-    const L = await importItems('listings', listings);
-    const R = await importItems('requests', requests);
+    const L = body.force === true ? await reclassify('listings', listings) : await importItems('listings', listings);
+    const R = body.force === true ? await reclassify('requests', requests) : await importItems('requests', requests);
     for (let i = 0; i < seen.length; i += 500) {
       check(await db().from('seen').upsert(seen.slice(i, i + 500), { onConflict: 'hash', ignoreDuplicates: true }));
     }

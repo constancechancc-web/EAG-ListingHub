@@ -22,6 +22,11 @@ export const RX = {
   apt: /apartment|\bapt\b|\bflat\b|\bflats\b|pangsapuri|组屋|平价屋|low[\s-]*cost|medium[\s-]*cost|rumah pangsa|\bppr\b/,
   terrace: /terrace|teres|link\s*house|排屋|\b(?:single|double|triple|two|three)\s*-?\s*(?:storey|story|sty|stry|stories|storeys)\b|\d(?:\.5)?\s*-?\s*(?:storey|story|sty|stry|stories|storeys)\b|单层|双层|两层|三层|一层半|两层半|\d(?:\.5)?\s*tingkat|setingkat|dua tingkat/,
   landed: /\blanded\b|有地|\bhouses?\b|\brumah\b/,
+  // Low Cost House (廉价屋): ONLY when the post actually says it. Other low-cost wording stays as before (flats → Apartment / Flat).
+  lowCostHouse: /low[\s-]*cost\s*(?:house|home)s?|廉[价價]屋/, // only when it is actually written "Low Cost House" (or 廉价屋)
+  lowCostFlat: /low[\s-]*cost\s*(?:flat|apartment|apt|pangsa)|(?:medium|low)[\s-]*cost\s*flat|flat\s*kos\s*rendah|廉[价價]组屋|廉[价價]組屋|低[价價]组屋/,
+  flatWord: /\bflats?\b|apartment|\bapt\b|pangsa|组屋|組屋|公寓|平价屋|平價屋/,
+  landedWord: /\b(?:single|double|triple|two|three)\s*-?\s*(?:storey|story|sty)\b|\d(?:\.5)?\s*-?\s*(?:storey|story|sty|stry)\b|terrace|teres|\blanded\b|单层|双层|三层|排屋/,
 };
 
 /** Storey count from text (1, 1.5, 2, 2.5, 3...). */
@@ -47,8 +52,14 @@ function landSubtype(t) {
 }
 
 /** All residential types the text mentions (for requests), or the single best one (for listings). */
+/** Low Cost House: only when written outright ("Low Cost House" / 廉价屋). */
+function isLowCostHouse(t) {
+  return RX.lowCostHouse.test(t) && !/low[\s-]*cost\s*flat|廉[价價]组屋|廉[价價]組屋/.test(t);
+}
+
 function residentialTypes(t, mode) {
   const found = [];
+  if (isLowCostHouse(t)) return [T.LOWCOST]; // the specific type wins over terrace / apartment wording in the same post
   const storeys = detectStoreys(t);
   if (RX.cluster.test(t)) found.push(T.CLUSTER);
   if (RX.semid.test(t)) found.push(T.SEMID);
