@@ -42,10 +42,10 @@ const BANK_LINE = /bank\s*val|\bbv\b|valuation|估价|银行估|银行价|bank p
 const SKIP_LINE = /maint|service charge|sinking|quit\s*rent|cukai|assessment|deposit|booking|admin fee|legal|管理费|订金|押金|stamp|loan|instal+ment|分期|月供|rebate|cashback|commission|komisen|utilit|ansuran|\bsc\b|\bsf\s*[:=]|cash\s*out|cashout|spa price|below market|低于\s*market|低于市|低过市|lower than market|under market|save\s+rm/i;
 const PRICE_WORD = /price|asking|selling|\bsale\b|\bsell\b|rent|rental|sewa|harga|jual|租金|月租|售价|价钱|价格|价|卖|租|nego|only|\bfor\b|\brm\b|@|💰|💵|💲/i;
 
-const SALE_LABEL = /(?:selling|asking|sale|sales|listing|nett?|spa)\s*price|price|sp\s*[:：]|售价|价钱|价格|卖价|harga|asking|💰/;
-const RENT_LABEL = /rental|rent|租金|月租|sewa|price|💰/;
+const SALE_LABEL = /(?:selling|asking|sale|sales|listing|nett?|spa)\s*price|\bprice\b|\bsp\s*[:：]|售价|价钱|价格|卖价|harga|\basking\b|💰/;
+const RENT_LABEL = /rental|\brent\b|租金|月租|sewa|\bprice\b|💰/;
 // on a sale post these lines talk about rent / returns, not the selling price
-const NOT_SALE_PRICE = /rental|rent(?:ed)?|租金|租客|tenant|roi|回酬|回报|sewa|income/;
+const NOT_SALE_PRICE = /rental|\brent(?:ed)?\b|租金|租客|tenant|\broi\b|回酬|回报|sewa|income/;
 
 function plausible(v, kind) {
   if (kind === 'rent') return v >= 100 && v <= 300000;
