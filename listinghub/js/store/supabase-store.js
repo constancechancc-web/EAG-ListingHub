@@ -12,7 +12,7 @@ const PAGE = 1000; // Supabase returns at most 1000 rows per request
 // only asks the database for rows that changed ("updated_at" newer than the last one it has).
 // A full reload happens at least every 3 days (this also removes rows an admin deleted) and after any admin delete.
 const CACHE_DB = 'eag-hub-cache';
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2; // bumped: one fresh full load so removed rows disappear from every device
 const CACHE_MAX_AGE = 3 * 24 * 3600 * 1000;
 
 function openCache() {
