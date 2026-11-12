@@ -360,3 +360,15 @@ test('WhatsApp notices (username created/changed, added) are not messages', asyn
   const msgs = parseChatText('[09/11/2026, 10:00:00] ~Jamie: ~Jamie Tan created the username @JamieTan_963\n[09/11/2026, 10:01:00] Amy: For Sale Taman X RM500k');
   assert.equal(msgs.length, 1);
 });
+
+test('price: "Rental: RM1900" beats "(Wifi can cancel, Rental -RM100)" earlier in the post', async () => {
+  const { extractPrice } = await import('../listinghub/js/core/price.js');
+  const t = 'Teega Suites\n1 Bed 1 Bath\nWith Grill Door & Wifi (Wifi can Cancel if Tenant no Need,\nRental -RM100)\nNo Including Bedsheets\n\nRental: RM1900\nDeposit: 2+1+0.5\nAgreement Fees: RM300';
+  assert.equal(extractPrice(t, 'rent').price, 1900);
+});
+
+test('price: "Asking Rental 2500 nego" (no colon), "RM11, 800" (space), heading number "360"', async () => {
+  const { extractPrice } = await import('../listinghub/js/core/price.js');
+  assert.equal(extractPrice('For Rent\n\nGrandView 360@ permas jaya\n~block C Low floor\n~1260 sqft\n~Asking Rental 2500 nego\n\nCode she6721', 'rent').price, 2500);
+  assert.equal(extractPrice('For Rent / Sales\n\nEco Botanic Phase 1\nBuilt up: 3200 sqft\nAsking Rental RM11, 800\nFor Sales RM3. 68m', 'rent').price, 11800);
+});

@@ -67,7 +67,7 @@ function fixUnits(a, kind) {
 const REF_AFTER_HEADING = /\b(for\s+(?:rent|sale|let))\s*(?:\(\s*[a-z]{0,4}\d{2,6}\s*\)|#\s*\d+|(?!rm)[a-z]{1,4}[-\s]?\d{2,6}\b)/gi;
 
 export function extractPrice(text, kind) {
-  const lines = String(text).split(/\n/).map((l) => l.replace(REF_AFTER_HEADING, '$1'));
+  const lines = String(text).split(/\n/).map((l) => l.replace(REF_AFTER_HEADING, '$1').replace(/(\d),\s+(\d{3}\b)/g, '$1,$2'));
   let price = null, bankValue = null;
   // pass 0 = a line that LABELS the price ("Selling Price: RM780k", "Asking 售价 ...") beats everything else in the post;
   // pass 1 = any line with a price-like word; pass 2 = any money-looking amount.
@@ -79,6 +79,7 @@ export function extractPrice(text, kind) {
       if (strict) {
         // the heading words "For Rent" / "For Sale" are not a price label
         if (!(kind === 'rent' ? RENT_LABEL : SALE_LABEL).test(l.replace(/\bfor\s+(?:rent|sale|let)\b/g, ''))) continue;
+      if (startOnly && !LABEL_FIRST.test(l.replace(/\bfor\s+(?:rent|sale|let)\b/g, '').trim())) continue;
         if (kind !== 'rent' && NOT_SALE_PRICE.test(l)) continue;
       } else if (wantKeyword && !PRICE_WORD.test(l)) continue;
       for (const a of scanAmounts(l)) {
@@ -99,7 +100,10 @@ export function extractPrice(text, kind) {
   // A labelled price line ("Rental: RM2300", "Asking RM 1900", "Selling Price : RM 1.13mil", or "💰Rental" with the
   // amount on the next line). Bare numbers only count straight after a colon; car park / deposit lines never count.
   const NOT_PRICE_LINE = /car\s*park|carpark|parking|停车|deposit|advance|booking|押金/;
-  const strictPass = () => {
+  // label at the START of the line ("Rental: RM1900") beats a label buried in a sentence ("Wifi can cancel, Rental -RM100")
+  const LABEL_FIRST = /^[\W_]*(?:(?:selling|asking|sale|sales|listing|monthly|rental|nett?|spa|expected)\s*)*(?:price|rental|rent|租金|月租|售价|价钱|价格|sewa|harga|asking)\b/;
+  const LABEL_THEN_AMOUNT = /^[\W_]*(?:(?:selling|asking|sale|sales|listing|monthly|rental|nett?|spa|expected)\s*)*(?:price|rental|rent|租金|月租|售价|价钱|价格|sewa|harga|asking)\s*(?:from|approx\.?|about|only)?[\s:：=]*$/;
+  const strictPass = (startOnly) => {
     for (let i = 0; i < lines.length; i++) {
       const l = lines[i].toLowerCase();
       if (BANK_LINE.test(l) || SKIP_LINE.test(l) || NOT_PRICE_LINE.test(l)) continue;
@@ -107,7 +111,9 @@ export function extractPrice(text, kind) {
       if (kind !== 'rent' && NOT_SALE_PRICE.test(l)) continue;
       const amts = scanAmounts(l);
       for (const a of amts) {
-        if (!a.rm && !a.suffix && !/[:：]\s*$/.test(l.slice(Math.max(0, a.start - 3), a.start))) continue;
+        const direct = LABEL_THEN_AMOUNT.test(l.replace(/\bfor\s+(?:rent|sale|let)\b/g, '').trim().slice(0, 0) + l.slice(0, a.start).replace(/\bfor\s+(?:rent|sale|let)\b/g, ''));
+        if (startOnly && !direct) continue;
+        if (!startOnly && !a.rm && !a.suffix && !/[:：]\s*$/.test(l.slice(Math.max(0, a.start - 3), a.start))) continue;
         if (!a.rm && !a.suffix && a.base < 100) continue;
         const v = fixUnits(a, kind);
         if (plausible(v, kind)) return v;
@@ -125,7 +131,8 @@ export function extractPrice(text, kind) {
     }
     return null;
   };
-  price = strictPass();
+  price = strictPass(true);
+  if (price == null) price = strictPass(false);
   if (price == null) price = pass(true);
   if (price == null) price = pass(false);
   return { price, bankValue };
