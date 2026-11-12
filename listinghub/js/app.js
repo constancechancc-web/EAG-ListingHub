@@ -879,6 +879,7 @@ function renderImportLog(log) {
   return `
     <p class="small">Last run 上次: <b>${esc(new Date(run.at).toLocaleString('en-MY', { timeZone: 'Asia/Kuala_Lumpur' }))}</b> —
       ${(run.newListings || 0).toLocaleString()} new listings, ${(run.newRequests || 0).toLocaleString()} new WTB/WTR, ${(run.duplicates || 0).toLocaleString()} re-posts merged.</p>
+    ${run.cleanup && run.cleanup.deleted ? `<p class="small">Old data clean-up 旧资料清理: removed ${run.cleanup.deleted.toLocaleString()} items older than ${esc(run.cleanup.before || '')}; a backup file was saved on the computer. 已在电脑上备份并删除。</p>` : ''}
     ${bad.length ? `<div class="note"><b class="err">Some files could not be imported 部分文件导入失败:</b>
       <table class="simple">${bad.map((f) => `<tr><td>${esc(f.name)}</td><td>${esc(f.reason || f.status)}${f.size ? ` (${(f.size / 1048576).toFixed(1)} MB)` : ''}</td></tr>`).join('')}</table>
       <p style="margin:6px 0 0">Re-export <b>Without Media</b>, or upload it here manually.<br>请重新导出（选择<b>不含媒体</b>），或在上方手动上传。</p></div>` : `<p class="ok small">All files imported OK 全部成功</p>`}`;
@@ -1018,7 +1019,7 @@ async function viewBackup(v) {
     ${admin ? `
     <section class="panel">
       <h2>Old data 旧资料 (> ${RETENTION_DAYS} days)</h2>
-      <p class="small muted">Items older than ${RETENTION_DAYS} days are already hidden. Delete them only after downloading a backup. 超过 ${RETENTION_DAYS} 天的资料已隐藏；下载备份后才可删除。</p>
+      <p class="small muted">Items older than ${RETENTION_DAYS} days are hidden, and are also deleted automatically every day by the import on the computer, after a backup file is saved there. You can still do it by hand here after downloading a backup.<br>超过 ${RETENTION_DAYS} 天的资料已隐藏；电脑上的自动导入每天会先备份再自动删除。你也可以在下载备份后在这里手动删除。</p>
       <div id="oldInfo"><button class="btn small" data-act="old-count">Count old items 计算旧资料</button></div>
     </section>
     <section class="panel">

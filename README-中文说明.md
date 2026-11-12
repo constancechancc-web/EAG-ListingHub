@@ -154,3 +154,8 @@ GitHub 仓库：https://github.com/constancechancc-web/EAG-ListingHub
 - 记录文件：`scripts/auto-import.log`
 - 暂停定时任务：`powershell -ExecutionPolicy Bypass -File scripts\install-auto-import.ps1 -Remove`
 - 重新开启：`powershell -ExecutionPolicy Bypass -File scripts\install-auto-import.ps1`
+
+**旧资料自动清理（超过 90 天）：** 自动导入每天会做一次：先把超过 90 天的资料**备份**成文件（存在 `文档\EAG Listing Hub Backups`，文件名像 `old-data-before-2026-08-13__saved-2026-11-12.json`，可以在 后台 Backend → Backup → Restore 还原），确认备份完整，**才**从网站删除。备份对不上就不会删除。网站只允许删除「已经不显示」的旧资料，近期的资料怎样都删不到。
+- 现在只看数量、不删除：`node scripts/auto-import.js --cleanup-now --dry-run`
+- 立刻清理一次：`node scripts/auto-import.js --cleanup-now`
+- 不想自动清理：在运行时加 `--no-cleanup`（改定时任务的参数），或告诉我关掉。

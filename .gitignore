@@ -9,3 +9,4 @@ scripts/auto-import.config.json
 scripts/auto-import.state.json
 scripts/auto-import.log*
 scripts/auto-import.lock
+backups/

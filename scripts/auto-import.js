@@ -6,6 +6,8 @@
 //   node scripts/auto-import.js --dry-run    parse and count only, send nothing, save nothing
 //   node scripts/auto-import.js --force      treat every file as changed (messages already sent are still skipped)
 //   node scripts/auto-import.js --init       create scripts/auto-import.config.json (with a new secret token)
+//   node scripts/auto-import.js --cleanup-now  run the old-data clean-up now (normally once a day); with --dry-run only counts
+//   node scripts/auto-import.js --no-cleanup   skip the clean-up in this run
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -14,6 +16,8 @@ import { unzipSync } from 'fflate';
 import { fileBytesToText, parseChatText } from '../listinghub/js/core/whatsapp.js';
 import { processMessages } from '../listinghub/js/core/importer.js';
 import { RETENTION_DAYS } from '../listinghub/js/core/constants.js';
+import { runOldDataCleanup } from './old-data-cleanup.js';
+import os from 'node:os';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const F = {
@@ -68,11 +72,11 @@ state.files ||= {}; state.sent ||= {};
 const saveState = () => { if (!DRY) fs.writeFileSync(F.state, JSON.stringify(state)); };
 
 /** POST/GET to the website with retries on network errors, 5xx and 429. */
-async function call(method, body) {
+async function call(method, body, query = '') {
   let last;
   for (let attempt = 1; attempt <= 4; attempt++) {
     try {
-      const r = await fetch(cfg.endpoint, {
+      const r = await fetch(cfg.endpoint + query, {
         method,
         headers: { Authorization: `Bearer ${cfg.token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
         body: body ? JSON.stringify(body) : undefined,
@@ -153,8 +157,28 @@ async function main() {
   saveState();
 
   log(`${DRY ? 'DRY RUN ' : ''}done: ${totals.files} file(s) read, ${totals.skipped} unchanged, ${totals.failed} failed; ${DRY ? `${totals.listings} listings, ${totals.requests} requests found` : `${totals.added} new listings, ${totals.addedReq} new requests added (${totals.listings} + ${totals.requests} checked)`}; ${totals.merged} re-posts merged`);
-  if (!DRY && report.length) {
-    try { await call('POST', { log: { files: report, newListings: totals.added, newRequests: totals.addedReq, merged: totals.merged } }); }
+  // Old data (older than the app's 90-day window): back it up to a file on this computer, check the file, then delete it
+  // from the website. Once a day; if anything does not match, nothing is deleted and the next run tries again.
+  const today = mytDay(Date.now());
+  let cleanup = null;
+  if (!args.has('--no-cleanup') && (args.has('--cleanup-now') || (!DRY && state.lastCleanup !== today))) {
+    try {
+      cleanup = await runOldDataCleanup({
+        call, log, dryRun: DRY, before: fromDay,
+        backupDir: cfg.backupFolder || path.join(os.homedir(), 'Documents', 'EAG Listing Hub Backups'),
+      });
+      if (!DRY) { state.lastCleanup = today; saveState(); }
+    } catch (e) {
+      log(`Clean-up STOPPED (nothing was deleted if the backup failed): ${e.message}`);
+      report.push({ name: 'Old data clean-up', status: 'failed', reason: String(e.message).slice(0, 150) });
+    }
+  }
+
+  // one summary line for the Import page (what was imported, and what was cleaned up)
+  if (!DRY && (report.length || (cleanup && cleanup.deleted))) {
+    const summary = { files: report, newListings: totals.added, newRequests: totals.addedReq, merged: totals.merged };
+    if (cleanup && cleanup.deleted) summary.cleanup = { deleted: cleanup.deleted, backup: cleanup.backup, before: cleanup.before };
+    try { await call('POST', { log: summary }); }
     catch (e) { log(`Could not save the run summary: ${e.message}`); }
   }
   process.exit(totals.failed && !totals.files ? 1 : 0);
