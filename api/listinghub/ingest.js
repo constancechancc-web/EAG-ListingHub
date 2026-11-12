@@ -90,6 +90,20 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     const action = req.query && req.query.action;
     if (!action) return res.status(200).json({ ok: true });
+    if (action === 'rows') {
+      // current rows, page by page (read-only; used by scripts/resort-db.js to re-read what is already saved)
+      const table = req.query.table;
+      if (table !== 'listings' && table !== 'requests') return res.status(400).json({ error: 'unknown table' });
+      try {
+        let q = db().from(table).select('id,day,posted_at,data').order('id').limit(500);
+        if (req.query.after) q = q.gt('id', String(req.query.after));
+        const rows = check(await q);
+        return res.status(200).json({ rows, next: rows.length === 500 ? rows[rows.length - 1].id : null });
+      } catch (e) {
+        console.error('rows failed', e);
+        return res.status(500).json({ error: 'read failed', detail: String(e.message).slice(0, 200) });
+      }
+    }
     const before = String((req.query && req.query.before) || '');
     if (!canDeleteBefore(before)) return res.status(400).json({ error: 'cutoff too recent', newestAllowed: cutoffDay() });
     try {
