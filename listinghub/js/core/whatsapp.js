@@ -54,7 +54,8 @@ export function fileBytesToText(bytes, unzipSync) {
 }
 
 const DATE = String.raw`(\d{1,4})[\/.\-](\d{1,2})[\/.\-](\d{1,4})`;
-const TIME = String.raw`(\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?\s*([AaPp]\.?\s?[Mm]\.?)?`;
+// groups: 1 = Chinese time-of-day word (iPhones set to Chinese), 2 hour, 3 minute, 4 second, 5 AM/PM
+const TIME = String.raw`(?:(凌晨|清晨|早上|早晨|上午|中午|下午|傍晚|晚上|夜晚|午夜)\s*)?(\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?\s*([AaPp]\.?\s?[Mm]\.?)?`;
 const RE_IOS = new RegExp(String.raw`^\[${DATE},?\s+${TIME}\]\s?(.*)$`);
 const RE_ANDROID = new RegExp(String.raw`^${DATE},?\s+${TIME}\s*[-–]\s(.*)$`);
 
@@ -86,20 +87,27 @@ function buildTime(m, order) {
   else if (order === 'mdy') [mo, d, y] = [+m[1], +m[2], +m[3]];
   else [d, mo, y] = [+m[1], +m[2], +m[3]];
   if (y < 100) y += 2000;
-  let h = +m[4];
-  const min = +m[5];
-  const ap = (m[7] || '').toLowerCase().replace(/[^ap]/g, '');
+  let h = +m[5];
+  const min = +m[6];
+  const ap = (m[8] || '').toLowerCase().replace(/[^ap]/g, '');
   if (ap === 'p' && h < 12) h += 12;
   if (ap === 'a' && h === 12) h = 0;
+  // Chinese 12-hour clocks: 凌晨12:05 = 00:05, 下午3:45 = 15:45, 晚上11:50 = 23:50, 中午12:30 = 12:30, 中午1:10 = 13:10
+  const zh = m[4];
+  if (zh) {
+    if (/下午|傍晚|晚上|夜晚/.test(zh)) { if (h < 12) h += 12; }
+    else if (/凌晨|午夜/.test(zh)) { if (h === 12) h = 0; }
+    else if (zh === '中午') { if (h < 11) h += 12; }
+  }
   if (mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || min > 59) return null;
   const day = `${y}-${pad(mo)}-${pad(d)}`;
-  return { day, minute: `${day}T${pad(h)}:${pad(min)}`, iso: `${day}T${pad(h)}:${pad(min)}:${pad(+(m[6] || 0))}+08:00` };
+  return { day, minute: `${day}T${pad(h)}:${pad(min)}`, iso: `${day}T${pad(h)}:${pad(min)}:${pad(+(m[7] || 0))}+08:00` };
 }
 
-const MEDIA_ONLY = /^(?:<media omitted>|‎?(?:image|video|audio|sticker|gif|document) omitted|<attached: [^>]+>|this message was deleted|you deleted this message|null|<view once (?:voice )?message>)$/i;
+const MEDIA_ONLY = /^(?:图像已忽略|图片已忽略|影片已忽略|视频已忽略|视讯已忽略|贴图已忽略|贴纸已忽略|音频已忽略|语音已忽略|语音讯息已忽略|文件已忽略|文档已忽略|GIF已忽略|联络人卡片已忽略|联系人名片已忽略|此(?:消息|讯息)已删除|你已删除此(?:消息|讯息)|已删除此(?:消息|讯息)|<media omitted>|‎?(?:image|video|audio|sticker|gif|document) omitted|<attached: [^>]+>|this message was deleted|you deleted this message|null|<view once (?:voice )?message>)$/i;
 
 // iPhone exports system events as if the group itself sent them.
-const SYSTEM_TEXT = /^(?:messages and calls are end-to-end encrypted.*|.{0,60}(?:created (?:this )?group|joined using this group's invite link|changed the (?:subject|group description|group name|group icon|settings)|changed this group's (?:icon|settings)|security code (?:with .+ )?changed|was removed|were added|was added|left)\.?.{0,40}|you were added.*|you joined.*)$/is;
+const SYSTEM_TEXT = /^(?:messages and calls are end-to-end encrypted.*|(?:讯息|消息)和通话(?:均)?已(?:端对端|端到端)加密.*|.{0,40}(?:创建了此群组|创建了群组|使用此群组的邀请链接加入|已加入此群组|更改了此群组的(?:图标|设置)|更改了群组(?:主题|描述|图标|名称))\.?.{0,40}|.{0,60}(?:created (?:this )?group|joined using this group's invite link|changed the (?:subject|group description|group name|group icon|settings)|changed this group's (?:icon|settings)|security code (?:with .+ )?changed|was removed|were added|was added|left)\.?.{0,40}|you were added.*|you joined.*)$/is;
 
 /** Normalised text used for the de-duplication hash (format differences between phones removed). */
 export function hashText(text) {
@@ -138,7 +146,7 @@ export function parseChatText(text, { onProgress } = {}) {
     if (t) {
       headers++;
       flush();
-      const rest = m[8];
+      const rest = m[9];
       const c = rest.indexOf(': ');
       if (c > 0 && c < 80) {
         cur = { sender: rest.slice(0, c).trim(), t, lines: [rest.slice(c + 2)] };

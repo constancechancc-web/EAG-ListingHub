@@ -17,7 +17,7 @@ $node = (Get-Command node -ErrorAction Stop).Source
 $script = Join-Path $project 'scripts\auto-import.js'
 if (-not (Test-Path (Join-Path $project 'scripts\auto-import.config.json'))) { throw 'Run first: node scripts\auto-import.js --init' }
 
-$action = New-ScheduledTaskAction -Execute $node -Argument "`"$script`"" -WorkingDirectory $project
+$action = New-ScheduledTaskAction -Execute $node -Argument "--max-old-space-size=4096 `"$script`"" -WorkingDirectory $project
 $triggers = @(
   (New-ScheduledTaskTrigger -Daily -At '12:00'),
   (New-ScheduledTaskTrigger -Daily -At '16:00'),

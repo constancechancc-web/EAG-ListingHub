@@ -237,3 +237,22 @@ test('text is cut and stored without half characters (the database rejects them)
   const l = listing(`FOR SALE\n${'𝐭𝐨𝐫𝐞𝐲 古来双层排屋 𝐅𝐨𝐫 𝐒𝐚𝐥𝐞 '.repeat(5)}\nPrice RM 500k\n0123456789`);
   assert.ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(l.title));
 });
+
+test('iPhone exports set to Chinese: [2026/11/05 下午3:45:12], 晚上/凌晨/中午, media and system lines', () => {
+  const text = [
+    '[2026/11/05 下午9:00:00] 群组名: ‎讯息和通话已端对端加密。只有此聊天中的成员才能阅读、收听或分享。',
+    '[2026/11/05 下午3:45:12] Agent A: For Rent\nSutera Utama shop lot\nRental RM 4,500\n0123456789',
+    '‎[2026/11/05 晚上11:50:01] Agent B: ‎图像已忽略',
+    '[2026/11/6 凌晨12:05:30] Agent C: WTR Mount Austin condo budget 2000\n0129990000',
+    '[2026/11/6 中午12:30:00] Agent D: For Sale\nTaman Molek double storey terrace\nPrice RM 700k\n0133334444',
+    '[2026/11/6 上午9:15:00] Agent E: 早安',
+  ].join('\n');
+  const msgs = parseChatText(text);
+  assert.equal(msgs.length, 4, 'encryption notice and 图像已忽略 are not messages');
+  assert.equal(msgs[0].postedAt, '2026-11-05T15:45:12+08:00');
+  assert.equal(msgs[1].postedAt, '2026-11-06T00:05:30+08:00');   // 凌晨12:05 = just after midnight
+  assert.equal(msgs[2].postedAt, '2026-11-06T12:30:00+08:00');   // 中午12:30 = noon
+  assert.equal(msgs[3].postedAt, '2026-11-06T09:15:00+08:00');
+  assert.equal(msgs[0].day, '2026-11-05');
+  assert.equal(parseChatText('[2026/11/05 晚上11:50:01] Agent B: hello there my friend')[0].postedAt, '2026-11-05T23:50:01+08:00');
+});
