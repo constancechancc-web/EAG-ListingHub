@@ -109,6 +109,10 @@ const MEDIA_ONLY = /^(?:图像已忽略|图片已忽略|影片已忽略|视频�
 // iPhone exports system events as if the group itself sent them.
 const SYSTEM_TEXT = /^(?:messages and calls are end-to-end encrypted.*|(?:讯息|消息)和通话(?:均)?已(?:端对端|端到端)加密.*|.{0,40}(?:创建了此群组|创建了群组|使用此群组的邀请链接加入|已加入此群组|更改了此群组的(?:图标|设置)|更改了群组(?:主题|描述|图标|名称))\.?.{0,40}|.{0,60}(?:created (?:this )?group|joined using this group's invite link|changed the (?:subject|group description|group name|group icon|settings)|changed this group's (?:icon|settings)|security code (?:with .+ )?changed|was removed|were added|was added|left)\.?.{0,40}|you were added.*|you joined.*)$/is;
 
+// WhatsApp notices that are not chat messages ("~Name created the username @x", "@a changed their username to @b", "~A added ~ B" ...)
+const NOTICE = /created the username|changed their username|changed (?:the |this )?group|\badded ~|~\s*[^\n]{0,40}\badded\b|\bwas added\b|\bjoined (?:using|via|from)|\bremoved ~|changed the subject|security code|end-to-end encrypted|invite link/i;
+export const isNotice = (text) => String(text || '').length < 200 && NOTICE.test(text);
+
 /** Normalised text used for the de-duplication hash (format differences between phones removed). */
 export function hashText(text) {
   return stripInvisible(text).replace(/<this message was edited>/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -128,7 +132,7 @@ export function parseChatText(text, { onProgress } = {}) {
   const flush = () => {
     if (!cur) return;
     const body = cur.lines.join('\n').replace(/<This message was edited>/gi, '').trim();
-    if (body && !MEDIA_ONLY.test(stripInvisible(body)) && !SYSTEM_TEXT.test(stripInvisible(body))) {
+    if (body && !MEDIA_ONLY.test(stripInvisible(body)) && !SYSTEM_TEXT.test(stripInvisible(body)) && !isNotice(body)) {
       out.push({
         sender: cur.sender,
         postedAt: cur.t.iso,

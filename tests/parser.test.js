@@ -350,3 +350,13 @@ test('"double storey shop" is Shop Office, not a terrace house', () => {
   assert.equal(t('*For Rent Taman Ungku Tun Aminah Jalan Hulubalang 1 double storey shop first floor*\n22 x 70'), T.SHOPOFF);
   assert.equal(t('Taman Molek double storey terrace for sale'), T.TER2);
 });
+
+test('WhatsApp notices (username created/changed, added) are not messages', async () => {
+  const { isNotice } = await import('../listinghub/js/core/whatsapp.js');
+  assert.ok(isNotice('~Jamie Tan created the username @JamieTan_963'));
+  assert.ok(isNotice('@johorproperty888 changed their username to @junetsengproperty'));
+  assert.ok(isNotice('~ Anne Property Negotiator added ~ Shelene Lau0808'));
+  assert.ok(!isNotice('For Rent Taman X\nRental: RM2500\nPlease join using the link'));
+  const msgs = parseChatText('[09/11/2026, 10:00:00] ~Jamie: ~Jamie Tan created the username @JamieTan_963\n[09/11/2026, 10:01:00] Amy: For Sale Taman X RM500k');
+  assert.equal(msgs.length, 1);
+});

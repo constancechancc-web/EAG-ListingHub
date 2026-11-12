@@ -7,6 +7,7 @@
 import crypto from 'node:crypto';
 import { db, check } from './_lib/supabase.js';
 import { toStored } from '../../listinghub/js/core/importer.js';
+import { isNotice } from '../../listinghub/js/core/whatsapp.js';
 import { OLD_TABLES, canDeleteBefore, cutoffDay } from './_lib/cleanup.js';
 
 export const config = { maxDuration: 60, api: { bodyParser: { sizeLimit: '4mb' } } };
@@ -138,6 +139,21 @@ export default async function handler(req, res) {
   const seen = (Array.isArray(body.seen) ? body.seen : []).slice(0, MAX_SEEN)
     .filter((x) => x && typeof x.hash === 'string' && x.hash.length <= 40 && DAY.test(x.day || ''))
     .map((x) => ({ hash: x.hash, day: x.day }));
+  if (body.removeNotices && typeof body.removeNotices === 'object') {
+    // remove rows that are really WhatsApp notices ("... created the username ..."): only rows whose own text passes isNotice()
+    const table = body.removeNotices.table;
+    const ids = (Array.isArray(body.removeNotices.ids) ? body.removeNotices.ids : []).filter((x) => typeof x === 'string' && x.length <= 40).slice(0, 200);
+    if ((table !== 'listings' && table !== 'requests') || !ids.length) return res.status(400).json({ error: 'bad request' });
+    try {
+      const rows = check(await db().from(table).select('id,data').in('id', ids));
+      const del = rows.filter((r) => r.data && isNotice(r.data.raw)).map((r) => r.id);
+      if (del.length) check(await db().from(table).delete().in('id', del));
+      return res.status(200).json({ removed: del.length, kept: ids.length - del.length });
+    } catch (e) {
+      console.error('remove notices failed', e);
+      return res.status(500).json({ error: 'remove failed', detail: String(e.message).slice(0, 200) });
+    }
+  }
   if (body.cleanup && typeof body.cleanup === 'object') {
     // delete rows older than the cut-off, in small batches (the caller repeats until done:true)
     const before = String(body.cleanup.before || '');
