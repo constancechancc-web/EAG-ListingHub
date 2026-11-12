@@ -500,7 +500,7 @@ async function onClick(e) {
       window.open(waLink(l.renPhone, listingEnquiry(name, l, lang)), '_blank', 'noopener');
       break;
     }
-    case 'copy-summary': copyText(listingSummary(L())); break;
+    case 'copy-summary': copyText(L().raw || listingSummary(L())); break; // copies the original WhatsApp message as posted
     case 'copy-raw-l': copyText(L().raw); break;
     case 'copy-raw-r': copyText(R().raw); break;
     case 'show-matches':
@@ -633,7 +633,7 @@ function listingCard(l, { showMatchBtn = true } = {}) {
         <details class="raw"><summary>Original WhatsApp message 原始讯息</summary><pre>${esc(l.raw)}</pre></details>
         <div class="actions">
           <button class="btn wa small" data-act="wa-ren" data-id="${esc(l.id)}">WhatsApp REN 联系经纪</button>
-          <button class="btn small" data-act="copy-summary" data-id="${esc(l.id)}">Copy 复制资料</button>
+          <button class="btn small" data-act="copy-summary" data-id="${esc(l.id)}">Copy 复制原文</button>
           ${showMatchBtn ? `<button class="btn dark small" data-act="show-matches" data-id="${esc(l.id)}"><span data-mc="${esc(l.id)}">…</span> matching clients →</button>` : ''}
         </div>
       </div>
