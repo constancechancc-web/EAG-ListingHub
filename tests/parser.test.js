@@ -343,3 +343,10 @@ test('"出售/FOR SALE" on an ROI headline still means sale', async () => {
   const { listingKind } = await import('../listinghub/js/core/classify.js');
   assert.equal(listingKind('🔥 *出售/FOR SALE 🔥 *ROI 5.0%* 🎀\nShoplot\nPrice RM3.88m'), 'sale');
 });
+
+test('"double storey shop" is Shop Office, not a terrace house', () => {
+  const t = (s) => classifyProperty(s, 'listing').type;
+  assert.equal(t('For rent\n\nDouble storey shop facing main road at taman ungku tun aminah, skudai, johor\n- total land area is 20x70 sqft'), T.SHOPOFF);
+  assert.equal(t('*For Rent Taman Ungku Tun Aminah Jalan Hulubalang 1 double storey shop first floor*\n22 x 70'), T.SHOPOFF);
+  assert.equal(t('Taman Molek double storey terrace for sale'), T.TER2);
+});

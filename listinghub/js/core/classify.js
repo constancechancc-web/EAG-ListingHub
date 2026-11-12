@@ -125,7 +125,7 @@ export function classifyProperty(text, mode = 'listing') {
     return out('Commercial', [isShopOffice ? T.SHOPOFF : T.RETAIL], 'shop');
   }
   if (factory) return out('Industrial', [T.FACTORY], 'factory');
-  if (RX.shopLoose.test(t) && !res().length) {
+  if (RX.shopLoose.test(t) && (!res().length || RX.shopOffice.test(t))) { // "double storey shop" is a shop, not a terrace house
     return out('Commercial', mode === 'request' ? [T.SHOPOFF, T.RETAIL] : [RX.shopOffice.test(t) ? T.SHOPOFF : T.RETAIL], 'shop');
   }
   if (RX.office.test(t) && !res().some((x) => x !== T.CONDO)) return out('Commercial', [T.OFFICE], 'office');
