@@ -166,7 +166,7 @@ const REQ_BUY = /\bwtb\b|want(?:ed|ing)? to buy|求购|求買|buyer(?:s)? (?:loo
 const REQ_RENT = /\bwtr\b|want(?:ed|ing)? to rent|求租|tenant(?:s)? (?:looking|search|seeking|wanted|need|want)|looking to rent|looking for .{0,25}(?:to rent|for rent)|租客|要租|想租|找租|nak sewa|ingin sewa|\btenant\b/;
 const REQ_GENERIC = /^\s*(?:looking for|client looking|my client|i have (?:a )?client|need|urgent(?:ly)?\s+(?:need|looking|want)|找|需要)/;
 const LIST_SALE = /for sale|\bsale\b|selling|\bsell\b|\bjual\b|dijual|出售|售价|卖|\bsubsale\b|sub-sale|asking price|\bwts\b|\bfs\b|\bfsale\b/;
-const LIST_RENT = /for rent|\brent\b|rental|\bsewa\b|disewa|出租|租金|月租|\bto let\b|\bfor let\b|\bwtl\b|\bfr\b|\/\s*month|\/\s*mth|per month|\bpm\b|sebulan|\/\s*mo\b/;
+const LIST_RENT = /for rent|\brent\b|rental|\bsewa\b|disewa|出租|租金|月租|\bto let\b|\bfor let\b|\bwtl\b|\bfr\b|\/\s*month|\/\s*mth|per month|\d[0-9,.k]*\s*pm\b|sebulan|\/\s*mo\b/;
 
 export function headOf(text) {
   const lines = stripInvisible(text).split(/\n/).map((l) => l.trim()).filter(Boolean);
@@ -199,6 +199,10 @@ export function genericRequestKind(text) {
 
 export function listingKind(text) {
   const t = norm(text);
+  // an explicit "For Sale" / "For Rent" line decides first
+  const fs_ = t.search(/for sale|出售/), fr_ = t.search(/for rent|for let|to let|出租/);
+  if (fs_ >= 0 && fr_ < 0) return 'sale';
+  if (fr_ >= 0 && fs_ < 0) return 'rent';
   const head = headOf(text);
   const hs = head.search(LIST_SALE), hr = head.search(LIST_RENT);
   if (hs >= 0 && (hr < 0 || hs <= hr)) return 'sale';

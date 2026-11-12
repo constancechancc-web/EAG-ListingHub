@@ -283,3 +283,10 @@ test('price: the line that labels the price wins over other amounts (market gap,
   assert.equal(extractPrice('Shoplot\n✅ Tenanted 稳定租金 RM3000\n✅ ROI 4.8%\n💰Selling Price :RM780k nego\n💰Bank Value : RM800k', 'sale').price, 780000);
   assert.equal(extractPrice('For Rent Taman X\nRental: RM2,500', 'rent').price, 2500);
 });
+
+test('For Sale / For Rent wording decides the kind; "can pm" is not "per month"', async () => {
+  const { listingKind } = await import('../listinghub/js/core/classify.js');
+  assert.equal(listingKind('Price Drop to 698k\n- Can pm for video\n\nFor Sale ~RM718k~ RM698k Net\nCitrine Residenz\nGated Guarded RM220'), 'sale');
+  assert.equal(listingKind('For rent Taman X RM2500 pm'), 'rent');
+  assert.equal(listingKind('Taman X RM2,500 pm 3 bedrooms'), 'rent');
+});
