@@ -118,7 +118,8 @@ async function main() {
 
   for (const name of names) {
     const full = path.join(cfg.folder, name);
-    const st = fs.statSync(full);
+    let st;
+    try { st = fs.statSync(full); } catch { log(`${name}: gone from the folder (moved or replaced while running), skipped`); continue; }
     const prev = state.files[name];
     if (!args.has('--force') && !RECLASSIFY && prev && prev.mtimeMs === st.mtimeMs && prev.size === st.size) { totals.skipped++; continue; }
     const entry = { name, status: 'ok', size: st.size };
