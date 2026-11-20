@@ -97,6 +97,45 @@ function budgetText(r) {
 const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 
 // ───────────────────────── boot / auth ─────────────────────────
+// ───────────── visitor links 访客链接 ─────────────
+// A link ends in "#g=<key>". The key is kept on this device so the visitor can come back while the link is live.
+// (After the "#", so it is never sent to the web server or its logs.)
+function takeGuestKey() {
+  const m = location.hash.match(/[#&]g=([A-Za-z0-9_-]{32,})/);
+  if (m) {
+    try { localStorage.setItem('eag.guestKey', m[1]); } catch {}
+    try { history.replaceState(null, '', location.pathname + location.search); } catch {}
+  }
+  try { return localStorage.getItem('eag.guestKey') || (m ? m[1] : ''); } catch { return m ? m[1] : ''; }
+}
+function dropGuestKey() { try { localStorage.removeItem('eag.guestKey'); } catch {} }
+const whenText = (iso) => {
+  const d = new Date(iso);
+  return isNaN(d) ? '' : d.toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kuala_Lumpur' });
+};
+
+function renderGuestEnded(u) {
+  if (S.guestTimer) { clearInterval(S.guestTimer); S.guestTimer = null; }
+  S.user = null; S.loaded = false; S.loading = false;
+  if (u.guestExpired) {
+    S.cachePromise = null;
+    dropGuestKey();
+    S.store.signOut(); // also wipes this device's saved copy of the list
+  }
+  app().innerHTML = u.guestExpired
+    ? `<section class="panel login-card">
+        <h2>Link closed 链接已关闭</h2>
+        <p class="muted">This visitor link has expired or was turned off.<br>这个访客链接已过期或已被关闭。</p>
+        <button class="btn" data-act="guest-exit">Agent sign in 经纪登录</button>
+      </section>`
+    : `<section class="panel login-card">
+        <h2>Could not open 无法打开</h2>
+        <p class="small muted">${esc(u.guestError || '')}</p>
+        <button class="btn" data-act="guest-retry">Try again 再试一次</button>
+      </section>`;
+  bindGlobal();
+}
+
 async function boot() {
   // Local test mode: no Supabase settings, or localhost with ?local=1 (keeps test data off the live database)
   const local = !SUPABASE_URL || !SUPABASE_ANON_KEY || (isLocalHost && new URLSearchParams(location.search).has('local'));
@@ -109,7 +148,7 @@ async function boot() {
     S.store = createLocalStore();
   } else {
     const { createSupabaseStore } = await import('./store/supabase-store.js');
-    S.store = createSupabaseStore();
+    S.store = createSupabaseStore({ guestKey: takeGuestKey() });
   }
   // read this browser's saved copy while the sign-in is being checked (it is only shown once the role is confirmed)
   S.cachePromise = S.store.loadCached ? S.store.loadCached(fromDay()).catch(() => null) : null;
@@ -123,6 +162,13 @@ const metaCache = {
 };
 
 async function onUser(u) {
+  if (u && (u.guestExpired || u.guestError)) return renderGuestEnded(u);
+  if (u && u.guest && !S.guestTimer) {
+    // while the page stays open, check every 5 minutes that the link is still live
+    S.guestTimer = setInterval(() => {
+      S.store.guestCheck().then((until) => { if (!until) renderGuestEnded({ guestExpired: true }); }).catch(() => {});
+    }, 5 * 60 * 1000);
+  }
   // The same person "signing in" again (browser tab regained focus) needs nothing: keep the screen as it is.
   if (u && S.user && S.user.email === u.email && S.user.role === u.role && (S.loaded || S.loading)) return;
   S.user = u;
@@ -319,16 +365,16 @@ function tabsFor(role) {
 
 function renderShell() {
   const u = S.user;
-  const roleName = { admin: 'Admin 管理员', editor: 'Editor 编辑', viewer: 'Viewer 经纪' }[u.role];
+  const roleName = u.guest ? 'Visitor 访客' : { admin: 'Admin 管理员', editor: 'Editor 编辑', viewer: 'Viewer 经纪' }[u.role];
   app().innerHTML = `
     <section class="panel topcard">
     ${S.store.mode === 'local' ? '<div class="local-banner">Local test mode 本地测试模式 — not connected to the live database. 未连接正式数据库。</div>' : ''}
     <div class="userbar">
       <img class="logo-sm app-logo" src="assets/eag-logo.png" alt="EAG">
       <span class="role-badge">${roleName}</span>
-      <span>${esc(u.email)}</span>
+      <span>${u.guest ? `Open until 开放至 ${esc(whenText(u.until))}` : esc(u.email)}</span>
       <span class="spacer"></span>
-      <button class="btn small" data-act="signout">Sign out 登出</button>
+      ${u.guest ? '<button class="btn small" data-act="guest-exit">Exit 退出</button>' : '<button class="btn small" data-act="signout">Sign out 登出</button>'}
     </div>
     <nav class="tabs" role="tablist">
       ${tabsFor(u.role).map((t) => `<button class="tab ${t.id === S.tab ? 'is-active' : ''}" role="tab" data-tab="${t.id}">${t.label}</button>`).join('')}
@@ -494,6 +540,8 @@ async function onClick(e) {
       break;
     case 'local-login': S.store.signIn(t.dataset.role); break;
     case 'signout': S.store.signOut(); break;
+    case 'guest-exit': dropGuestKey(); await S.store.signOut(); location.replace(location.pathname); break;
+    case 'guest-retry': location.reload(); break;
     case 'wa-ren': {
       const l = L();
       if (!name) toast('Tip: fill in "Your name" first 请先填写你的名字');
@@ -1018,6 +1066,17 @@ async function viewBackup(v) {
     </section>
     ${admin ? `
     <section class="panel">
+      <h2>Visitor links 访客链接</h2>
+      <p class="small muted">Anyone with a visitor link can open the hub without signing in and see what an agent (Viewer) sees, including contacts, until the link expires or you turn it off.<br>
+      拿到访客链接的人不用登录就能打开，看到的内容和经纪（Viewer）一样（包括联系方式），直到链接过期或你关闭它。</p>
+      <div class="grid3" style="margin-top:10px">
+        <label class="f" style="grid-column: span 2"><span>Name / note 备注</span><input type="text" id="guestLabel" maxlength="80" placeholder="e.g. Buyer Mr Tan / Agency XYZ"></label>
+        <label class="f"><span>Open for 开放时间</span><select id="guestDays"><option value="1">1 day 1天</option><option value="3" selected>3 days 3天</option><option value="7">7 days 7天</option><option value="30">30 days 30天</option></select></label>
+      </div>
+      <button class="btn gold" data-act="guest-create" style="margin-top:8px">Create link 生成链接</button>
+      <div id="guestList" style="margin-top:12px"><div class="spinner"></div></div>
+    </section>
+    <section class="panel">
       <h2>Old data 旧资料 (> ${RETENTION_DAYS} days)</h2>
       <p class="small muted">Items older than ${RETENTION_DAYS} days are hidden, and are also deleted automatically every day by the import on the computer, after a backup file is saved there. You can still do it by hand here after downloading a backup.<br>超过 ${RETENTION_DAYS} 天的资料已隐藏；电脑上的自动导入每天会先备份再自动删除。你也可以在下载备份后在这里手动删除。</p>
       <div id="oldInfo"><button class="btn small" data-act="old-count">Count old items 计算旧资料</button></div>
@@ -1042,7 +1101,48 @@ async function viewBackup(v) {
     ` : ''}`;
   renderUsers();
   renderGroups();
+  if (admin) renderGuestLinks();
 }
+
+const guestUrl = (token) => location.origin + location.pathname + '#g=' + token;
+async function copyLink(url) {
+  try { await navigator.clipboard.writeText(url); toast('Link copied 链接已复制'); }
+  catch { prompt('Copy this link 复制这个链接:', url); }
+}
+async function renderGuestLinks() {
+  const box = $('#guestList');
+  if (!box) return;
+  try {
+    const links = await S.store.listGuestLinks();
+    const now = Date.now();
+    box.innerHTML = links.length
+      ? `<table class="simple">${links.map((g) => {
+        const live = !g.revoked_at && Date.parse(g.expires_at) > now;
+        const status = g.revoked_at ? `<span class="muted">Turned off 已关闭</span>` : live ? `<span class="ok">Open until 开放至 ${esc(whenText(g.expires_at))}</span>` : `<span class="muted">Expired 已过期</span>`;
+        return `<tr><td>${esc(g.label || '—')}<div class="muted small">Made 生成于 ${esc(whenText(g.created_at))}</div></td><td>${status}</td>
+          <td style="text-align:right;white-space:nowrap">${live ? `<button class="btn small" data-act="guest-copy" data-token="${esc(g.token)}">Copy link 复制</button>
+          <button class="btn danger small" data-act="guest-off" data-token="${esc(g.token)}">Turn off 关闭</button>` : ''}</td></tr>`;
+      }).join('')}</table>`
+      : `<p class="muted small">No visitor links yet 还没有访客链接</p>`;
+  } catch (e) { box.innerHTML = `<p class="err small">${esc(e.message)}</p>`; }
+}
+actionHandlers['guest-create'] = async (t) => {
+  t.disabled = true;
+  try {
+    const { token } = await S.store.createGuestLink($('#guestLabel').value.trim(), Number($('#guestDays').value) || 3);
+    $('#guestLabel').value = '';
+    await copyLink(guestUrl(token));
+    renderGuestLinks();
+  } catch (e) { toast('Could not create 生成失败: ' + e.message, 4000); }
+  t.disabled = false;
+};
+actionHandlers['guest-copy'] = (t) => copyLink(guestUrl(t.dataset.token));
+actionHandlers['guest-off'] = async (t) => {
+  if (!confirm('Turn off this visitor link now? Anyone using it loses access. 现在关闭这个访客链接？用它的人会马上失去权限。')) return;
+  await S.store.revokeGuestLink(t.dataset.token);
+  toast('Link turned off 链接已关闭');
+  renderGuestLinks();
+};
 
 function download(name, text) {
   const a = document.createElement('a');

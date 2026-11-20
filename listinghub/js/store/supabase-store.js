@@ -43,10 +43,16 @@ export function forgetCache() { try { indexedDB.deleteDatabase(CACHE_DB); } catc
 /** Newest (updated_at, id) of a list of rows. */
 const newestCursor = (rows, prev) => rows.reduce((c, r) => (!c || r.updated_at > c.u || (r.updated_at === c.u && r.id > c.id) ? { u: r.updated_at, id: r.id } : c), prev || null);
 
-export function createSupabaseStore() {
-  const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' },
-  });
+/** guestKey: the key from a visitor link 访客链接 (no sign-in; the database lets it read what a Viewer reads while it is live). */
+export function createSupabaseStore({ guestKey = '' } = {}) {
+  const sb = guestKey
+    ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'eag-guest' },
+      global: { headers: { 'x-guest-key': guestKey } },
+    })
+    : createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' },
+    });
   let session = null;
   const seenMemo = new Map(); // day → Set of message hashes already imported
 
@@ -147,7 +153,20 @@ export function createSupabaseStore() {
   return {
     mode: 'supabase',
 
+    guest: !!guestKey,
+    /** Visitor link: end time if it is live, otherwise null. */
+    async guestCheck() {
+      const { data, error } = await sb.rpc('guest_check');
+      if (error) throw new Error(error.message);
+      return data || null;
+    },
     onUser(cb) {
+      if (guestKey) {
+        this.guestCheck()
+          .then((until) => cb(until ? { email: '', name: '', role: 'viewer', guest: true, until } : { guestExpired: true }))
+          .catch((e) => cb({ guestError: e.message }));
+        return () => {};
+      }
       // Supabase also reports "signed in" again whenever the browser tab regains focus. Only a real change of user counts.
       let emittedFor;
       const emit = async (s) => {
@@ -171,7 +190,7 @@ export function createSupabaseStore() {
       const redirectTo = location.origin + location.pathname;
       check(await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo, queryParams: { prompt: 'select_account' } } }));
     },
-    signOut: () => { forgetCache(); return sb.auth.signOut(); },
+    signOut: () => { forgetCache(); return guestKey ? Promise.resolve() : sb.auth.signOut(); },
     idToken: async () => (await sb.auth.getSession()).data.session?.access_token || null,
 
     /** The list for the screen: from this browser's saved copy plus what changed since; a full download if there is none. */
@@ -295,6 +314,21 @@ export function createSupabaseStore() {
       };
       const [a, b] = await Promise.all([newest('listings'), newest('requests')]);
       return [a, b].filter(Boolean).sort().pop() || null;
+    },
+
+    // ── visitor links (Admin only; the database refuses everyone else) ──
+    async listGuestLinks() {
+      return check(await sb.from('guest_links').select('token,label,created_at,expires_at,revoked_at').order('created_at', { ascending: false }).limit(100));
+    },
+    async createGuestLink(label, days) {
+      const bytes = crypto.getRandomValues(new Uint8Array(32));
+      const token = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      const expires_at = new Date(Date.now() + days * 86400000).toISOString();
+      check(await sb.from('guest_links').insert({ token, label: String(label || '').slice(0, 80), expires_at }));
+      return { token, expires_at };
+    },
+    async revokeGuestLink(token) {
+      check(await sb.from('guest_links').update({ revoked_at: new Date().toISOString() }).eq('token', token));
     },
 
     async getMeta(id) {

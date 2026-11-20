@@ -29,9 +29,10 @@ before(async () => {
 });
 
 /** Run SQL as a signed-in user (or anonymous when email is null). Returns rows, or throws. */
-async function as(email, sql, { provider = 'google' } = {}) {
+async function as(email, sql, { provider = 'google', guestKey = '' } = {}) {
   const claims = email ? { email, app_metadata: { provider, providers: [provider] } } : {};
-  await db.exec(`reset role; select set_config('request.jwt.claims', '${JSON.stringify(claims)}', false); set role ${email ? 'authenticated' : 'anon'};`);
+  const headers = guestKey ? { 'x-guest-key': guestKey } : {};
+  await db.exec(`reset role; select set_config('request.jwt.claims', '${JSON.stringify(claims)}', false); select set_config('request.headers', '${JSON.stringify(headers)}', false); set role ${email ? 'authenticated' : 'anon'};`);
   try {
     const r = await db.query(sql);
     return r;
@@ -53,7 +54,10 @@ test('roles: owner is the only admin; unknown, anonymous and e-mail/password use
 test('strangers and anonymous visitors see nothing', async () => {
   assert.equal(await count('stranger@gmail.com', 'listings'), 0);
   assert.equal(await count('stranger@gmail.com', 'requests'), 0);
-  await assert.rejects(as(null, 'select * from listings'));
+  assert.equal(await count(null, 'listings'), 0); // anonymous without a live visitor link: no rows
+  assert.equal(await count(null, 'requests'), 0);
+  assert.equal(await count(null, 'meta'), 0);
+  await assert.rejects(as(null, 'select * from app_users'));
 });
 
 test('ACCEPT: a Viewer can read but cannot write anything', async () => {
@@ -177,4 +181,31 @@ test('Editors manage Viewers only: add / change / remove viewers, see the viewer
   await assert.rejects(as('stranger@gmail.com', `insert into app_users (email, role) values ('z@gmail.com', 'viewer')`), /row-level security/);
   // a viewer still sees only their own row
   assert.deepEqual((await rows(V, 'select email from app_users')).map((r) => r.email), ['viewer@gmail.com']);
+});
+
+test('visitor links: a live link reads like a Viewer; expired, turned-off or wrong keys read nothing; only the Admin manages links', async () => {
+  const LIVE = 'k'.repeat(40), OLD = 'o'.repeat(40), OFF = 'f'.repeat(40);
+  await as(OWNER, `insert into guest_links (token, label, expires_at) values ('${LIVE}', 'test', now() + interval '1 day')`);
+  await as(OWNER, `insert into guest_links (token, label, expires_at) values ('${OFF}', 'off', now() + interval '1 day')`);
+  await as(OWNER, `update guest_links set revoked_at = now() where token = '${OFF}'`);
+  await db.exec(`insert into guest_links (token, expires_at) values ('${OLD}', now() - interval '1 minute')`);
+  const g = (key) => ({ guestKey: key });
+  assert.ok(await count('viewer@gmail.com', 'listings') > 0);
+  assert.equal((await rows(null, 'select count(*)::int n from listings', g(LIVE)))[0].n, await count('viewer@gmail.com', 'listings'));
+  assert.equal((await rows(null, 'select count(*)::int n from requests', g(LIVE)))[0].n, await count('viewer@gmail.com', 'requests'));
+  assert.ok((await rows(null, 'select guest_check() t', g(LIVE)))[0].t);
+  for (const k of [OLD, OFF, 'x'.repeat(40), '']) {
+    assert.equal((await rows(null, 'select count(*)::int n from listings', g(k)))[0].n, 0, k);
+    assert.equal((await rows(null, 'select guest_check() t', g(k)))[0].t, null);
+  }
+  // a visitor only reads, and only the safe settings
+  assert.equal((await rows(null, `select count(*)::int n from meta where id in ('importLog','driveState')`, g(LIVE)))[0].n, 0);
+  await assert.rejects(as(null, `insert into listings (id, day, data) values ('X', '2026-11-09', '{}')`, g(LIVE)));
+  await assert.rejects(as(null, `delete from listings`, g(LIVE)));
+  await assert.rejects(as(null, `select * from guest_links`, g(LIVE)));
+  // only the Admin sees / makes links; at most 31 days
+  assert.equal(await count('editor@gmail.com', 'guest_links'), 0);
+  await assert.rejects(as('editor@gmail.com', `insert into guest_links (token, expires_at) values ('${'e'.repeat(40)}', now() + interval '1 day')`), /row-level security/);
+  await assert.rejects(as(OWNER, `insert into guest_links (token, expires_at) values ('${'y'.repeat(40)}', now() + interval '90 days')`), /row-level security/);
+  assert.equal(await count(OWNER, 'guest_links'), 3);
 });
