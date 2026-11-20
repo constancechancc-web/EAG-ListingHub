@@ -1064,7 +1064,6 @@ async function viewBackup(v) {
       <button class="btn gold" data-act="user-add" style="margin-top:8px">Add / update 加入/更新</button>
       <div id="userList" style="margin-top:12px"><div class="spinner"></div></div>
     </section>
-    ${admin ? `
     <section class="panel">
       <h2>Visitor links 访客链接</h2>
       <p class="small muted">Anyone with a visitor link can open the hub without signing in and see what an agent (Viewer) sees, including contacts, until the link expires or you turn it off.<br>
@@ -1076,6 +1075,7 @@ async function viewBackup(v) {
       <button class="btn gold" data-act="guest-create" style="margin-top:8px">Create link 生成链接</button>
       <div id="guestList" style="margin-top:12px"><div class="spinner"></div></div>
     </section>
+    ${admin ? `
     <section class="panel">
       <h2>Old data 旧资料 (> ${RETENTION_DAYS} days)</h2>
       <p class="small muted">Items older than ${RETENTION_DAYS} days are hidden, and are also deleted automatically every day by the import on the computer, after a backup file is saved there. You can still do it by hand here after downloading a backup.<br>超过 ${RETENTION_DAYS} 天的资料已隐藏；电脑上的自动导入每天会先备份再自动删除。你也可以在下载备份后在这里手动删除。</p>
@@ -1101,7 +1101,7 @@ async function viewBackup(v) {
     ` : ''}`;
   renderUsers();
   renderGroups();
-  if (admin) renderGuestLinks();
+  renderGuestLinks(); // Admin and Editors
 }
 
 const guestUrl = (token) => location.origin + location.pathname + '#g=' + token;

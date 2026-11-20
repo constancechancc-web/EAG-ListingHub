@@ -225,11 +225,11 @@ grant select, insert, update on public.guest_links to authenticated;
 drop policy if exists "guest links read"   on public.guest_links;
 drop policy if exists "guest links add"    on public.guest_links;
 drop policy if exists "guest links change" on public.guest_links;
-create policy "guest links read"   on public.guest_links for select to authenticated using ((select public.app_role()) = 'admin');
+create policy "guest links read"   on public.guest_links for select to authenticated using ((select public.app_role()) in ('admin', 'editor'));
 create policy "guest links add"    on public.guest_links for insert to authenticated
-  with check ((select public.app_role()) = 'admin' and expires_at <= now() + interval '31 days' and revoked_at is null);
+  with check ((select public.app_role()) in ('admin', 'editor') and expires_at <= now() + interval '31 days' and revoked_at is null);
 create policy "guest links change" on public.guest_links for update to authenticated
-  using ((select public.app_role()) = 'admin') with check ((select public.app_role()) = 'admin' and expires_at <= now() + interval '31 days');
+  using ((select public.app_role()) in ('admin', 'editor')) with check ((select public.app_role()) in ('admin', 'editor') and expires_at <= now() + interval '31 days');
 
 -- the key the visitor's browser sent ('' if none)
 create or replace function public.guest_key() returns text

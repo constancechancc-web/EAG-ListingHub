@@ -203,9 +203,14 @@ test('visitor links: a live link reads like a Viewer; expired, turned-off or wro
   await assert.rejects(as(null, `insert into listings (id, day, data) values ('X', '2026-11-09', '{}')`, g(LIVE)));
   await assert.rejects(as(null, `delete from listings`, g(LIVE)));
   await assert.rejects(as(null, `select * from guest_links`, g(LIVE)));
-  // only the Admin sees / makes links; at most 31 days
-  assert.equal(await count('editor@gmail.com', 'guest_links'), 0);
-  await assert.rejects(as('editor@gmail.com', `insert into guest_links (token, expires_at) values ('${'e'.repeat(40)}', now() + interval '1 day')`), /row-level security/);
+  // Admin and Editors see / make / turn off links (at most 31 days); Viewers and strangers cannot
+  await as('editor@gmail.com', `insert into guest_links (token, expires_at) values ('${'e'.repeat(40)}', now() + interval '1 day')`);
+  await as('editor@gmail.com', `update guest_links set revoked_at = now() where token = '${'e'.repeat(40)}'`);
+  assert.equal(await count('editor@gmail.com', 'guest_links'), 4);
+  await assert.rejects(as('editor@gmail.com', `insert into guest_links (token, expires_at) values ('${'z'.repeat(40)}', now() + interval '90 days')`), /row-level security/);
   await assert.rejects(as(OWNER, `insert into guest_links (token, expires_at) values ('${'y'.repeat(40)}', now() + interval '90 days')`), /row-level security/);
-  assert.equal(await count(OWNER, 'guest_links'), 3);
+  assert.equal(await count('viewer@gmail.com', 'guest_links'), 0);
+  await assert.rejects(as('viewer@gmail.com', `insert into guest_links (token, expires_at) values ('${'v'.repeat(40)}', now() + interval '1 day')`), /row-level security/);
+  await assert.rejects(as('editor@gmail.com', `delete from guest_links`)); // nobody deletes links (history stays)
+  assert.equal(await count(OWNER, 'guest_links'), 4);
 });
