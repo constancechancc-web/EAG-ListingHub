@@ -200,7 +200,7 @@ async function onUser(u) {
     await loadData();
   } catch (e) {
     S.loading = false;
-    app().innerHTML = `<section class="panel center"><p class="err">Could not load data 载入失败</p><p class="small muted">${esc(e.message)}</p><button class="btn" data-act="signout">Sign out 登出</button></section>`;
+    app().innerHTML = `<section class="panel center"><p class="err">Could not load data 载入失败</p><p class="small muted">${esc(e.message)}</p>${S.user && S.user.guest ? '<button class="btn" data-act="guest-retry">Try again 再试一次</button>' : '<button class="btn" data-act="signout">Sign out 登出</button>'}</section>`;
     bindGlobal();
     return;
   }

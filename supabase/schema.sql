@@ -267,3 +267,7 @@ create policy "listings guest read" on public.listings for select to anon using 
 create policy "requests guest read" on public.requests for select to anon using ((select public.guest_ok()));
 create policy "meta guest read"     on public.meta     for select to anon
   using ((select public.guest_ok()) and id in ('branding', 'groupSources', 'lastImport'));
+
+-- visitors load the whole list in pages like signed-in users do; the default 3 s limit for anon is too short
+-- (run on Supabase only; the test database has no such setting to change)
+-- alter role anon set statement_timeout = '30s'; notify pgrst, 'reload config';
