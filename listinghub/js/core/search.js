@@ -26,7 +26,7 @@ export function cutoffTime(now = Date.now(), days = RETENTION_DAYS) {
 }
 
 /**
- * filters: { kind, category, type, region, priceMin, priceMax, bedMin, source, sqftMin, sqftMax, landMin, landMax, q, now }
+ * filters: { kind, category, type, region, priceMin, priceMax, bedMin, lot ('Intermediate' | 'End lot' | 'Corner lot'), source, sqftMin, sqftMax, landMin, landMax, q, now }
  */
 export function searchListings(listings, filters = {}) {
   const phrase = compilePhrase(filters.q || '');
@@ -47,6 +47,7 @@ export function searchListings(listings, filters = {}) {
     if (pMin != null && !(l.price >= pMin)) continue;
     if (pMax != null && !(l.price != null && l.price <= pMax)) continue;
     if (bMin != null && !(l.bed >= bMin)) continue;
+    if (filters.lot && !(l.features || []).includes(filters.lot)) continue;
     if (ind) {
       if (sMin != null && !(l.sqft >= sMin)) continue;
       if (sMax != null && !(l.sqft != null && l.sqft <= sMax)) continue;

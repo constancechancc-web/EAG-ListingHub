@@ -174,3 +174,14 @@ test('Low Cost House listings match Low Cost House requests only (exact type), n
   const r2 = prepareRequest(mk('WTB Plentong double storey terrace\nBudget 300k\n0129990001', 'Kelly'), buildAreaVocab([low, ter, flat]));
   assert.deepEqual(matchRequest(r2, idx).map((p) => p.listing.type), ['Terrace (2–2.5 Storey)']);
 });
+
+test('Unit Type filter: Corner / Intermediate / End Lot', () => {
+  const corner = mk('For Sale\nTaman Molek double storey terrace corner lot\nRM 800k\n0123456700');
+  const inter = mk('For Sale\nTaman Molek double storey terrace intermediate lot\nRM 700k\n0123456701');
+  assert.ok(corner.features.includes('Corner lot') && inter.features.includes('Intermediate'));
+  const both = [corner, inter];
+  assert.deepEqual(searchListings(both, { lot: 'Corner lot', now }), [corner]);
+  assert.deepEqual(searchListings(both, { lot: 'Intermediate', now }), [inter]);
+  assert.equal(searchListings(both, { lot: 'End lot', now }).length, 0);
+  assert.equal(searchListings(both, { lot: '', now }).length, 2);
+});

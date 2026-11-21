@@ -20,7 +20,7 @@ const S = {
   prepared: null, // prepared requests (for matching)
   prepGen: 0,
   matchGen: 0,
-  f: { q: '', kind: '', category: '', type: '', region: '', source: '', bedMin: '', priceMin: '', priceMax: '', sqftMin: '', sqftMax: '', landMin: '', landMax: '' },
+  f: { q: '', kind: '', category: '', type: '', region: '', source: '', bedMin: '', lot: '', priceMin: '', priceMax: '', sqftMin: '', sqftMax: '', landMin: '', landMax: '' },
   results: [],
   shown: 30,
   m: { la: '', ra: '', q: '', kind: '', focus: null },
@@ -619,7 +619,8 @@ function viewSearch(v) {
         <label class="f"><span>Source 来源</span><select data-f="source">${opt('', 'All 全部', f.source)}${SOURCES.map((x) => opt(x.id, x.label, f.source)).join('')}</select></label>
         <label class="f"><span>Bedrooms 房间</span><select data-f="bedMin">${opt('', 'Any 不限', f.bedMin)}${[1, 2, 3, 4, 5].map((n) => opt(n, `${n}+`, f.bedMin)).join('')}</select></label>
       </div>
-      <div class="grid2" style="margin-top:8px">
+      <div class="grid3" style="margin-top:8px">
+        <label class="f"><span>Unit Type 位置</span><select data-f="lot">${opt('', 'All 全部', f.lot)}${[['Corner lot', 'Corner Lot'], ['Intermediate', 'Intermediate Lot'], ['End lot', 'End Lot']].map(([k, label]) => opt(k, label, f.lot)).join('')}</select></label>
         <label class="f"><span>Min price 最低价 (RM)</span><input type="number" inputmode="numeric" data-f="priceMin" value="${esc(f.priceMin)}" placeholder="0"></label>
         <label class="f"><span>Max price 最高价 (RM)</span><input type="number" inputmode="numeric" data-f="priceMax" value="${esc(f.priceMax)}" placeholder="Any"></label>
       </div>
