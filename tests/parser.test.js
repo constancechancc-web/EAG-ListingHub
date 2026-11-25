@@ -379,3 +379,11 @@ test('price: "*For Sale*(HO5350)" is a reference; "*Selling RM528,000*" is the p
   assert.equal(extractPrice(t, 'sale').price, 528000);
   assert.equal(extractPrice('For Sale (HO5350)\nTaman X\nRM 450k', 'sale').price, 450000);
 });
+
+test('"走路都可以到店面" in a terrace house post is an amenity, not a shop', () => {
+  const t = (s) => classifyProperty(s, 'listing').type;
+  assert.equal(t('Megah Ria单层排屋出售 全新油漆装修单位，转个弯就到Permas Jaya，走路都可以到店面，很多吃店面食\n*WTS / For Sale*\n•Single Storey Terrace House\n•3 Bedroom 2 Bathroom\n•20x70'), T.TER1);
+  assert.equal(t('底楼店面出租 Taman Daya ground floor'), T.RETAIL);       // a real shop stays a shop
+  assert.equal(t('双层店屋出售 Senai 22x70'), T.SHOPOFF);
+  assert.equal(t('3 storey shoplot near terrace houses Taman Molek'), T.SHOPOFF);
+});

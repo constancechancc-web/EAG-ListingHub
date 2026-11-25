@@ -115,7 +115,11 @@ export function classifyProperty(text, mode = 'listing') {
     }
   }
 
-  if (RX.shopStrict.test(t)) {
+  // "走路都可以到店面" / "near shops" in a house post: Chinese 店面/商铺/店铺 alone, with a house named outright, is a nearby amenity
+  const shopOnlyAsAmenity = RX.shopStrict.test(t) && !RX.shopStrict.test(t.replace(/店面|门店|商铺|店铺|retail shop/g, ' '))
+    && /terrace|\bteres\b|排屋|排楼|semi[\s-]*d\b|半独立|bungalow|独立式|cluster|田字屋|townhouse|联排|condo|apartment|公寓|serviced residence|\bhouse\b|\brumah\b/.test(t)
+    && res().length > 0;
+  if (RX.shopStrict.test(t) && !shopOnlyAsAmenity) {
     if (mode === 'request') {
       const types = [T.SHOPOFF, T.RETAIL];
       if (RX.office.test(t.replace(/shop\s*office/g, ''))) types.push(T.OFFICE);
