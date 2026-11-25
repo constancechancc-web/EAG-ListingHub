@@ -372,3 +372,10 @@ test('price: "Asking Rental 2500 nego" (no colon), "RM11, 800" (space), heading 
   assert.equal(extractPrice('For Rent\n\nGrandView 360@ permas jaya\n~block C Low floor\n~1260 sqft\n~Asking Rental 2500 nego\n\nCode she6721', 'rent').price, 2500);
   assert.equal(extractPrice('For Rent / Sales\n\nEco Botanic Phase 1\nBuilt up: 3200 sqft\nAsking Rental RM11, 800\nFor Sales RM3. 68m', 'rent').price, 11800);
 });
+
+test('price: "*For Sale*(HO5350)" is a reference; "*Selling RM528,000*" is the price', async () => {
+  const { extractPrice } = await import('../listinghub/js/core/price.js');
+  const t = '*For Sale*(HO5350)\n\n*Single Storey Terrace House*\nMegariah\nJalan Dedaru x\n3 Beds 2 Baths\nLand Size: 20\'x70\' (1,400sqft)\nIntermediate Lot\n\n*Selling RM528,000*';
+  assert.equal(extractPrice(t, 'sale').price, 528000);
+  assert.equal(extractPrice('For Sale (HO5350)\nTaman X\nRM 450k', 'sale').price, 450000);
+});

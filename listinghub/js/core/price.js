@@ -42,7 +42,7 @@ const BANK_LINE = /bank\s*val|\bbv\b|valuation|估价|银行估|银行价|bank p
 const SKIP_LINE = /maint|service charge|sinking|quit\s*rent|cukai|assessment|deposit|booking|admin fee|legal|管理费|订金|押金|stamp|loan|instal+ment|分期|月供|rebate|cashback|commission|komisen|utilit|ansuran|\bsc\b|\bsf\s*[:=]|cash\s*out|cashout|spa price|below market|低于\s*market|低于市|低过市|lower than market|under market|save\s+rm/i;
 const PRICE_WORD = /price|asking|selling|\bsale\b|\bsell\b|rent|rental|sewa|harga|jual|租金|月租|售价|价钱|价格|价|卖|租|nego|only|\bfor\b|\brm\b|@|💰|💵|💲/i;
 
-const SALE_LABEL = /(?:selling|asking|sale|sales|listing|nett?|spa)\s*price|\bprice\b|\bsp\s*[:：]|售价|价钱|价格|卖价|harga|\basking\b|💰/;
+const SALE_LABEL = /(?:selling|asking|sale|sales|listing|nett?|spa)\s*price|\bprice\b|\bsp\s*[:：]|售价|价钱|价格|卖价|harga|\basking\b|\bselling\b|💰/;
 const RENT_LABEL = /rental|\brent\b|租金|月租|sewa|\bprice\b|💰/;
 // on a sale post these lines talk about rent / returns, not the selling price
 const NOT_SALE_PRICE = /rental|\brent(?:ed)?\b|租金|租客|tenant|\broi\b|回酬|回报|sewa|income/;
@@ -64,7 +64,7 @@ function fixUnits(a, kind) {
 
 /** Listing price + bank value from message text. kind: 'sale' | 'rent' | null */
 // a listing reference after the heading ("For Rent D649", "For Rent (AH7799)") is an ID, not an amount
-const REF_AFTER_HEADING = /\b(for\s+(?:rent|sale|let))\s*(?:\(\s*[a-z]{0,4}\d{2,6}\s*\)|#\s*\d+|(?!rm)[a-z]{1,4}[-\s]?\d{2,6}\b)/gi;
+const REF_AFTER_HEADING = /\b(for\s+(?:rent|sale|let))[\s*_~]*(?:\(\s*[a-z]{0,4}\d{2,6}\s*\)|#\s*\d+|(?!rm)[a-z]{1,4}[-\s]?\d{2,6}\b)/gi;
 
 export function extractPrice(text, kind) {
   const lines = String(text).split(/\n/).map((l) => l.replace(REF_AFTER_HEADING, '$1').replace(/(\d),\s+(\d{3}\b)/g, '$1,$2'));
@@ -101,8 +101,8 @@ export function extractPrice(text, kind) {
   // amount on the next line). Bare numbers only count straight after a colon; car park / deposit lines never count.
   const NOT_PRICE_LINE = /car\s*park|carpark|parking|停车|deposit|advance|booking|押金/;
   // label at the START of the line ("Rental: RM1900") beats a label buried in a sentence ("Wifi can cancel, Rental -RM100")
-  const LABEL_FIRST = /^[\W_]*(?:(?:selling|asking|sale|sales|listing|monthly|rental|nett?|spa|expected)\s*)*(?:price|rental|rent|租金|月租|售价|价钱|价格|sewa|harga|asking)\b/;
-  const LABEL_THEN_AMOUNT = /^[\W_]*(?:(?:selling|asking|sale|sales|listing|monthly|rental|nett?|spa|expected)\s*)*(?:price|rental|rent|租金|月租|售价|价钱|价格|sewa|harga|asking)\s*(?:from|approx\.?|about|only)?[\s:：=]*$/;
+  const LABEL_FIRST = /^[\W_]*(?:(?:selling|asking|sale|sales|listing|monthly|rental|nett?|spa|expected)\s*)*(?:price|rental|rent|租金|月租|售价|价钱|价格|sewa|harga|asking|selling)\b/;
+  const LABEL_THEN_AMOUNT = /^[\W_]*(?:(?:selling|asking|sale|sales|listing|monthly|rental|nett?|spa|expected)\s*)*(?:price|rental|rent|租金|月租|售价|价钱|价格|sewa|harga|asking|selling)\s*(?:from|approx\.?|about|only)?[\s:：=]*$/;
   const strictPass = (startOnly) => {
     for (let i = 0; i < lines.length; i++) {
       const l = lines[i].toLowerCase();
