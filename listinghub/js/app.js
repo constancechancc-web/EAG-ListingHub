@@ -57,6 +57,47 @@ function toast(msg, ms = 2200) {
   toast._t = setTimeout(() => t.classList.remove('show'), ms);
 }
 
+// Listings are downloaded without their original WhatsApp text (to save Supabase download allowance);
+// the text is fetched when a card's "Original message" is opened or copied.
+async function listingRawText(l) {
+  if (!l) return '';
+  if (typeof l.raw === 'string') return l.raw;
+  if (!S.store.listingRaw) return '';
+  const raw = await S.store.listingRaw(l.id);
+  try { Object.defineProperty(l, 'raw', { value: raw, writable: true, configurable: true, enumerable: false }); } catch {}
+  return raw;
+}
+const rawPre = (l) => (typeof l.raw === 'string' ? `<pre>${esc(l.raw)}</pre>` : `<pre data-raw-id="${esc(l.id)}">Loading 载入中…</pre>`);
+async function fillRaw(pre) {
+  const id = pre.dataset.rawId;
+  if (!id || pre.dataset.loaded) return;
+  pre.dataset.loaded = '1';
+  const l = S.listings.find((x) => x.id === id) || { id };
+  try { pre.textContent = (await listingRawText(l)) || '—'; }
+  catch (e) { pre.textContent = 'Could not load 载入失败: ' + e.message; delete pre.dataset.loaded; }
+}
+/** Open WhatsApp with a message that quotes the listing's original text (fetched first if this device lacks it). */
+function openWhatsApp(l, makeUrl) {
+  if (!l || typeof l.raw === 'string') { window.open(makeUrl(), '_blank', 'noopener'); return; }
+  const w = window.open('about:blank', '_blank'); // opened now, while the click still counts, or the browser blocks it
+  listingRawText(l).catch(() => '').then(() => {
+    const url = makeUrl();
+    if (w) { try { w.opener = null; } catch {} w.location.href = url; } else window.open(url, '_blank', 'noopener');
+  });
+}
+
+/** Copy text that is still being fetched (Safari needs the clipboard call to start right away). */
+async function copyLater(promise) {
+  try {
+    if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+      await navigator.clipboard.write([new ClipboardItem({ 'text/plain': promise.then((t) => new Blob([t], { type: 'text/plain' })) })]);
+      toast('Copied 已复制');
+      return;
+    }
+  } catch {}
+  copyText(await promise);
+}
+
 async function copyText(text) {
   try {
     await navigator.clipboard.writeText(text);
@@ -507,6 +548,11 @@ function bindGlobal() {
   document.addEventListener('click', onClick);
   document.addEventListener('input', onInput);
   document.addEventListener('change', onChange);
+  // "Original message" boxes load their text when opened ('toggle' does not bubble, so listen while capturing)
+  document.addEventListener('toggle', (e) => {
+    const d = e.target;
+    if (d && d.tagName === 'DETAILS' && d.open) d.querySelectorAll('pre[data-raw-id]').forEach(fillRaw);
+  }, true);
 }
 
 async function onClick(e) {
@@ -545,11 +591,11 @@ async function onClick(e) {
     case 'wa-ren': {
       const l = L();
       if (!name) toast('Tip: fill in "Your name" first 请先填写你的名字');
-      window.open(waLink(l.renPhone, listingEnquiry(name, l, lang)), '_blank', 'noopener');
+      openWhatsApp(l, () => waLink(l.renPhone, listingEnquiry(name, l, lang)));
       break;
     }
-    case 'copy-summary': copyText(L().raw || listingSummary(L())); break; // copies the original WhatsApp message as posted
-    case 'copy-raw-l': copyText(L().raw); break;
+    case 'copy-summary': { const l = L(); copyLater(listingRawText(l).then((t) => t || listingSummary(l))); break; } // the original WhatsApp message as posted
+    case 'copy-raw-l': copyLater(listingRawText(L())); break;
     case 'copy-raw-r': copyText(R().raw); break;
     case 'show-matches':
       S.m = { la: '', ra: '', q: '', kind: '', focus: id };
@@ -560,7 +606,7 @@ async function onClick(e) {
     case 'wa-client': {
       const r = R(), l = S.listings.find((x) => x.id === t.dataset.lid);
       if (!name) toast('Tip: fill in "Your name" first 请先填写你的名字');
-      window.open(waLink(r.renPhone, clientAgentMessage(name, r, l, lang)), '_blank', 'noopener');
+      openWhatsApp(l, () => waLink(r.renPhone, clientAgentMessage(name, r, l, lang)));
       break;
     }
     case 'more-results': S.shown += PAGE; renderResults(); break;
@@ -679,7 +725,7 @@ function listingCard(l, { showMatchBtn = true } = {}) {
       <div class="agent">REN <b>${esc(l.renName)}</b>${l.renPhone ? ` · ${esc(l.renPhone)}` : ''}</div>
       <div class="meta">${esc(l.group)} · ${postedLabel(l.postedAt)}</div>
       <div class="card-foot">
-        <details class="raw"><summary>Original WhatsApp message 原始讯息</summary><pre>${esc(l.raw)}</pre></details>
+        <details class="raw"><summary>Original WhatsApp message 原始讯息</summary>${rawPre(l)}</details>
         <div class="actions">
           <button class="btn wa small" data-act="wa-ren" data-id="${esc(l.id)}">WhatsApp REN 联系经纪</button>
           <button class="btn small" data-act="copy-summary" data-id="${esc(l.id)}">Copy 复制原文</button>
@@ -791,7 +837,7 @@ function pairCard(p) {
       </div>
       <ul class="reasons">${reasons}</ul>
       <div class="card-foot">
-        <details class="raw"><summary>Listing original post 房源原文</summary><pre>${esc(l.raw)}</pre></details>
+        <details class="raw"><summary>Listing original post 房源原文</summary>${rawPre(l)}</details>
         <details class="raw"><summary>WTB/WTR original post 需求原文</summary><pre>${esc(r.raw)}</pre></details>
         <div class="actions">
           <button class="btn small" data-act="copy-raw-l" data-id="${esc(l.id)}">Copy listing post 复制房源</button>

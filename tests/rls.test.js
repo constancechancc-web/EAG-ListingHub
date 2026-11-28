@@ -214,3 +214,20 @@ test('visitor links: a live link reads like a Viewer; expired, turned-off or wro
   await assert.rejects(as('editor@gmail.com', `delete from guest_links`)); // nobody deletes links (history stays)
   assert.equal(await count(OWNER, 'guest_links'), 4);
 });
+
+test('less download: deletions leave a note readers can see; listings_lite has no original text and keeps the read rules', async () => {
+  await db.exec(`insert into listings (id, day, data) values ('DEL1', '2026-11-09', '{"title":"gone soon","raw":"For Sale X"}'), ('KEEP1', '2026-11-09', '{"title":"stays","raw":"For Rent Y"}')`);
+  await db.exec(`delete from listings where id = 'DEL1'`);
+  const notes = await rows('viewer@gmail.com', `select tbl, row_id from deleted_rows where row_id = 'DEL1'`);
+  assert.deepEqual(notes, [{ tbl: 'listings', row_id: 'DEL1' }]);
+  assert.equal(await count('stranger@gmail.com', 'deleted_rows'), 0);
+  assert.equal(await count(null, 'deleted_rows'), 0);
+  await assert.rejects(as('viewer@gmail.com', `delete from deleted_rows`));
+  // lite view: same rows as listings for a viewer, none for a stranger, and no "raw"
+  assert.equal(await count('viewer@gmail.com', 'listings_lite'), await count('viewer@gmail.com', 'listings'));
+  assert.equal(await count('stranger@gmail.com', 'listings_lite'), 0);
+  assert.equal(await count(null, 'listings_lite'), 0);
+  const lite = await rows('viewer@gmail.com', `select data from listings_lite where id = 'KEEP1'`);
+  assert.equal(lite[0].data.title, 'stays');
+  assert.equal(lite[0].data.raw, undefined);
+});

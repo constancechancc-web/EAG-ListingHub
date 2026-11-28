@@ -10,10 +10,13 @@ const PAGE = 1000; // Supabase returns at most 1000 rows per request
 // ───────────── local copy of the list (IndexedDB) ─────────────
 // Opening the app downloads ~26,000 listings (several MB). Each browser therefore keeps its own copy and, next time,
 // only asks the database for rows that changed ("updated_at" newer than the last one it has).
-// A full reload happens at least every 3 days (this also removes rows an admin deleted) and after any admin delete.
+// Deleted rows are dropped using the database's deletion notes (deleted_rows, kept 45 days), so a full reload is only
+// needed when a device has not opened the app for 40 days. Listings are downloaded WITHOUT the original WhatsApp
+// text (view listings_lite); that text is fetched one listing at a time when someone opens or copies it.
+// (Every full download counts against Supabase's monthly "egress" allowance.)
 const CACHE_DB = 'eag-hub-cache';
-const CACHE_VERSION = 2; // bumped: one fresh full load so removed rows disappear from every device
-const CACHE_MAX_AGE = 3 * 24 * 3600 * 1000;
+const CACHE_VERSION = 2;
+const CACHE_MAX_AGE = 40 * 24 * 3600 * 1000;
 
 function openCache() {
   return new Promise((resolve) => {
@@ -34,6 +37,13 @@ async function cachePut(db, store, rows) {
   for (let i = 0; i < rows.length; i += 2000) {
     const tx = db.transaction(store, 'readwrite');
     for (const r of rows.slice(i, i + 2000)) tx.objectStore(store).put(r);
+    await idbDone(tx);
+  }
+}
+async function cacheDelete(db, store, ids) {
+  for (let i = 0; i < ids.length; i += 2000) {
+    const tx = db.transaction(store, 'readwrite');
+    for (const id of ids.slice(i, i + 2000)) tx.objectStore(store).delete(id);
     await idbDone(tx);
   }
 }
@@ -97,6 +107,23 @@ export function createSupabaseStore({ guestKey = '' } = {}) {
       c = { u: last.updated_at, id: last.id };
     }
   }
+
+  /** Deletion notes after `seq` (0 = all kept notes). */
+  async function deletionsSince(seq) {
+    const out = [];
+    let after = seq || 0;
+    for (;;) {
+      const rows = check(await sb.from('deleted_rows').select('seq,tbl,row_id').gt('seq', after).order('seq').limit(PAGE));
+      out.push(...rows);
+      if (rows.length < PAGE) return out;
+      after = rows[rows.length - 1].seq;
+    }
+  }
+  async function newestDeletion() {
+    const rows = check(await sb.from('deleted_rows').select('seq').order('seq', { ascending: false }).limit(1));
+    return rows && rows[0] ? rows[0].seq : 0;
+  }
+  const rawMemo = new Map(); // id → original text fetched this session
 
   /**
    * Big tables (listings): ids are hashes written in base 36, spread evenly over the numbers but not over the text
@@ -214,23 +241,27 @@ export function createSupabaseStore({ guestKey = '' } = {}) {
       try { meta = db && (await cacheGet(db, 'meta', 'sync')); } catch {}
       if (db && meta && meta.v === CACHE_VERSION && Date.now() - meta.fullAt < CACHE_MAX_AGE) {
         try {
-          const [dl, dr] = await Promise.all([changesSince('listings', 'data', meta.l), changesSince('requests', 'data,status', meta.r)]);
+          const [dl, dr, gone] = await Promise.all([changesSince('listings_lite', 'data', meta.l), changesSince('requests', 'data,status', meta.r), deletionsSince(meta.d)]);
           await cachePut(db, 'listings', dl.map((r) => ({ id: r.id, item: fromRow(r) })));
           await cachePut(db, 'requests', dr.map((r) => ({ id: r.id, item: fromRow(r) })));
-          await cachePut(db, 'meta', [{ ...meta, k: 'sync', l: newestCursor(dl, meta.l), r: newestCursor(dr, meta.r) }]);
+          await cacheDelete(db, 'listings', gone.filter((g) => g.tbl === 'listings').map((g) => g.row_id));
+          await cacheDelete(db, 'requests', gone.filter((g) => g.tbl === 'requests').map((g) => g.row_id));
+          const d = gone.length ? gone[gone.length - 1].seq : meta.d || 0;
+          await cachePut(db, 'meta', [{ ...meta, k: 'sync', l: newestCursor(dl, meta.l), r: newestCursor(dr, meta.r), d }]);
           const [cl, cr] = await Promise.all([cacheAll(db, 'listings'), cacheAll(db, 'requests')]);
-          return { listings: cl.map((x) => x.item).filter(inRange), requests: cr.map((x) => x.item).filter(inRange), fromCache: true, changed: dl.length + dr.length };
+          return { listings: cl.map((x) => x.item).filter(inRange), requests: cr.map((x) => x.item).filter(inRange), fromCache: true, changed: dl.length + dr.length + gone.length };
         } catch { /* cache unusable → full download below */ }
       }
       const f = fromDay ? (q) => q.gte('day', fromDay) : null;
-      const [l, r] = await Promise.all([selectAllSliced('listings', 'data,updated_at', f, onProgress), selectAll('requests', 'data,status,updated_at', f)]);
+      const d = await newestDeletion().catch(() => 0); // notes up to here are already reflected in this download
+      const [l, r] = await Promise.all([selectAllSliced('listings_lite', 'data,updated_at', f, onProgress), selectAll('requests', 'data,status,updated_at', f)]);
       const out = { listings: l.map(fromRow), requests: r.map(fromRow), fromCache: false, changed: l.length + r.length };
       if (db) {
         try {
           await cacheClear(db, ['listings', 'requests']);
           await cachePut(db, 'listings', l.map((x, i) => ({ id: x.id, item: out.listings[i] })));
           await cachePut(db, 'requests', r.map((x, i) => ({ id: x.id, item: out.requests[i] })));
-          await cachePut(db, 'meta', [{ k: 'sync', v: CACHE_VERSION, fullAt: Date.now(), l: newestCursor(l), r: newestCursor(r) }]);
+          await cachePut(db, 'meta', [{ k: 'sync', v: CACHE_VERSION, fullAt: Date.now(), l: newestCursor(l), r: newestCursor(r), d }]);
         } catch { /* a full cache is only an optimisation */ }
       }
       return out;
@@ -262,8 +293,7 @@ export function createSupabaseStore({ guestKey = '' } = {}) {
       check(await sb.from('requests').update({ data, status: data.status === 'closed' ? 'closed' : 'open', updated_at: new Date().toISOString() }).eq('id', item.id));
     },
     async deleteItem(prefix, item) {
-      check(await sb.from(TABLE[prefix]).delete().eq('id', item.id));
-      forgetCache();
+      check(await sb.from(TABLE[prefix]).delete().eq('id', item.id)); // devices drop it via the deletion notes
     },
 
     async exportAll() {
@@ -314,6 +344,15 @@ export function createSupabaseStore({ guestKey = '' } = {}) {
       };
       const [a, b] = await Promise.all([newest('listings'), newest('requests')]);
       return [a, b].filter(Boolean).sort().pop() || null;
+    },
+
+    /** The original WhatsApp text of one listing (not part of the list download). */
+    async listingRaw(id) {
+      if (rawMemo.has(id)) return rawMemo.get(id);
+      const rows = check(await sb.from('listings').select('raw:data->>raw').eq('id', id).limit(1));
+      const raw = rows && rows[0] ? rows[0].raw || '' : '';
+      rawMemo.set(id, raw);
+      return raw;
     },
 
     // ── visitor links (Admin only; the database refuses everyone else) ──
